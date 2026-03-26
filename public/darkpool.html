@@ -78,7 +78,7 @@
         grid-template-rows: auto minmax(0, 1fr);
       }
       .price-chart-card {
-        height: 648px;
+        height: 720px;
         display: grid;
         grid-template-rows: auto minmax(0, 1fr);
       }
@@ -303,20 +303,153 @@
         overflow: hidden;
       }
       .price-chart-card .hd {
-        align-items: flex-start;
-        flex-wrap: wrap;
+        display: grid;
+        gap: 10px;
+        align-items: stretch;
+      }
+      .chart-topline {
+        display: grid;
+        grid-template-columns: minmax(220px, 1.25fr) repeat(4, minmax(120px, 1fr));
+        gap: 10px;
+        align-items: stretch;
+        width: 100%;
+      }
+      .chart-market-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid #1f3346;
+        border-radius: 10px;
+        background: linear-gradient(180deg, #101a24, #0b1219);
+      }
+      .chart-pair-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #7ef6df, #31d2ff);
+        box-shadow: 0 0 18px rgba(78, 199, 255, 0.42);
+        flex: 0 0 auto;
+      }
+      .chart-market-copy {
+        min-width: 0;
+      }
+      .chart-market-copy strong {
+        display: block;
+        font-size: 16px;
+        letter-spacing: 0.01em;
+        color: #e4f0fb;
+      }
+      .chart-market-copy span {
+        display: block;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #7890a8;
+        margin-top: 3px;
+      }
+      .chart-top-stat {
+        border: 1px solid #1f3346;
+        border-radius: 10px;
+        background: linear-gradient(180deg, #101821, #0b1219);
+        padding: 10px 12px;
+      }
+      .chart-top-stat label {
+        margin: 0 0 4px 0;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #7f96ad;
+      }
+      .chart-top-stat .value {
+        font-size: 15px;
+        color: #dbe9f8;
       }
       .order-entry-card .bd {
         height: auto;
         min-height: 0;
         overflow: auto;
       }
+      .chart-shell {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr);
+        gap: 10px;
+        min-height: 0;
+      }
+      .chart-toolrail {
+        border: 1px solid #1f3346;
+        border-radius: 10px;
+        background: linear-gradient(180deg, #0c141c, #0a1118);
+        display: grid;
+        align-content: start;
+        gap: 8px;
+        padding: 10px 6px;
+      }
+      .chart-toolbtn {
+        width: 100%;
+        aspect-ratio: 1;
+        padding: 0;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: #90aac4;
+        font-size: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .chart-toolbtn:hover {
+        border-color: #27435d;
+        background: #0c1925;
+      }
+      .chart-mainpane {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        min-height: 0;
+        border: 1px solid #1f3346;
+        border-radius: 10px;
+        background: linear-gradient(180deg, #0c141c, #08121c);
+        overflow: hidden;
+      }
+      .chart-legend {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: center;
+        padding: 9px 12px;
+        border-bottom: 1px solid #17324a;
+        min-height: 44px;
+      }
+      .chart-legend-main {
+        min-width: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 12px;
+        color: #9db5cb;
+      }
+      .chart-legend-main .swatch {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+        background: #2ed8bf;
+        box-shadow: 0 0 12px rgba(46, 216, 191, 0.42);
+        flex: 0 0 auto;
+      }
+      .chart-legend-values {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: flex-end;
+        font-size: 12px;
+        color: #8ca5be;
+      }
+      .chart-legend-values .up { color: #2cd889; }
+      .chart-legend-values .down { color: #ff6b7f; }
       .chart-host {
         width: 100%;
         height: 100%;
-        min-height: 468px;
-        border: 1px solid #1f3346;
-        border-radius: 8px;
+        min-height: 520px;
         background: #08121c;
         overflow: hidden;
       }
@@ -346,11 +479,12 @@
       }
       .chart-toolbar {
         display: grid;
-        grid-template-columns: minmax(190px, 1fr) auto auto 96px 116px;
+        grid-template-columns: minmax(180px, 1fr) auto auto 96px 116px;
         gap: 8px;
         align-items: center;
         width: 100%;
         margin-left: 0;
+        padding: 0;
       }
       .segmented {
         display: inline-flex;
@@ -374,41 +508,52 @@
         border-color: transparent;
       }
       .chart-body {
-        display: grid;
-        grid-template-rows: minmax(0, 1fr) auto;
-        gap: 12px;
-        min-height: 0;
-      }
-      .chart-frame {
-        display: grid;
         min-height: 0;
       }
       .chart-statusbar {
-        display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
+        display: flex;
+        flex-wrap: wrap;
         gap: 8px;
-        align-items: stretch;
+        align-items: center;
+        padding: 10px 12px;
+        border-top: 1px solid #17324a;
+        background: #0a1218;
       }
       .chart-pill-stat {
         border: 1px solid #1f3346;
-        border-radius: 8px;
-        background: #09131d;
-        padding: 8px 10px;
+        border-radius: 999px;
+        background: #0d1822;
+        padding: 7px 10px;
+        min-width: 0;
       }
       .chart-pill-stat label {
-        margin: 0 0 3px 0;
-        font-size: 10px;
+        margin: 0 0 2px 0;
+        font-size: 9px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
       .chart-pill-stat .value {
-        font-size: 13px;
+        font-size: 11px;
         color: #d6e6f7;
       }
       .chart-pill-stat.note .value {
         font-size: 11px;
         line-height: 1.35;
         color: #8ba5bf;
+      }
+      .chart-toolbar-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: center;
+      }
+      .chart-footer-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        justify-content: flex-end;
+        color: #7f96ad;
+        font-size: 11px;
       }
       .chart-toolbar label {
         margin: 0;
@@ -690,8 +835,21 @@
           width: 100%;
           grid-template-columns: 1fr 1fr;
         }
-        .chart-statusbar {
+        .chart-topline {
           grid-template-columns: 1fr 1fr;
+        }
+        .chart-shell {
+          grid-template-columns: 1fr;
+        }
+        .chart-toolrail {
+          grid-template-columns: repeat(6, 1fr);
+          align-items: center;
+        }
+        .chart-legend {
+          grid-template-columns: 1fr;
+        }
+        .chart-statusbar {
+          justify-content: flex-start;
         }
         .withdraw-summary,
         .withdraw-actions {
@@ -789,49 +947,98 @@
       <section class="card price-chart-card">
         <div class="hd">
           <h2>Price Chart</h2>
-          <div class="chart-toolbar">
-            <div class="field">
-              <label>Chart Market</label>
-              <select id="chartPair">
-                <option value="">loading...</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>Interval</label>
-              <div class="segmented" id="chartIntervalButtons">
-                <button type="button" class="seg-btn active" data-interval="60">1m</button>
-                <button type="button" class="seg-btn" data-interval="300">5m</button>
-                <button type="button" class="seg-btn" data-interval="900">15m</button>
-                <button type="button" class="seg-btn" data-interval="3600">1h</button>
-              </div>
-              <select id="chartInterval" style="display:none;">
-                <option value="60">1m</option>
-                <option value="300">5m</option>
-                <option value="900">15m</option>
-                <option value="3600">1h</option>
-              </select>
-            </div>
-            <div class="field chart-window">
-              <label>Window</label>
-              <div class="segmented" id="chartWindowButtons">
-                <button type="button" class="seg-btn active" data-zoom="100">All</button>
-                <button type="button" class="seg-btn" data-zoom="75">Wide</button>
-                <button type="button" class="seg-btn" data-zoom="50">Tight</button>
-                <button type="button" class="seg-btn" data-zoom="30">Focus</button>
+          <div class="chart-topline">
+            <div class="chart-market-header">
+              <div class="chart-pair-dot" aria-hidden="true"></div>
+              <div class="chart-market-copy">
+                <strong id="chartHeroPair">tETH/tZEKO</strong>
+                <span id="chartHeroVenue">ShadowBook perpetual market</span>
               </div>
             </div>
-            <div class="field">
-              <label>Points</label>
-              <input id="chartPoints" type="number" value="60" />
+            <div class="chart-top-stat">
+              <label>Price</label>
+              <div id="chartHeroPrice" class="value mono">-</div>
             </div>
-            <button type="button" class="ghost" id="refreshTrades">Refresh</button>
+            <div class="chart-top-stat">
+              <label>24h Change</label>
+              <div id="chartHeroChange" class="value mono">-</div>
+            </div>
+            <div class="chart-top-stat">
+              <label>24h Volume</label>
+              <div id="chartHeroVolume" class="value mono">-</div>
+            </div>
+            <div class="chart-top-stat">
+              <label>Last Print</label>
+              <div id="chartHeroTime" class="value mono">-</div>
+            </div>
+          </div>
+          <div class="chart-toolbar-row">
+            <div class="chart-toolbar">
+              <div class="field">
+                <label>Chart Market</label>
+                <select id="chartPair">
+                  <option value="">loading...</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Interval</label>
+                <div class="segmented" id="chartIntervalButtons">
+                  <button type="button" class="seg-btn active" data-interval="60">1m</button>
+                  <button type="button" class="seg-btn" data-interval="300">5m</button>
+                  <button type="button" class="seg-btn" data-interval="900">15m</button>
+                  <button type="button" class="seg-btn" data-interval="3600">1h</button>
+                </div>
+                <select id="chartInterval" style="display:none;">
+                  <option value="60">1m</option>
+                  <option value="300">5m</option>
+                  <option value="900">15m</option>
+                  <option value="3600">1h</option>
+                </select>
+              </div>
+              <div class="field chart-window">
+                <label>Window</label>
+                <div class="segmented" id="chartWindowButtons">
+                  <button type="button" class="seg-btn active" data-zoom="100">All</button>
+                  <button type="button" class="seg-btn" data-zoom="75">Wide</button>
+                  <button type="button" class="seg-btn" data-zoom="50">Tight</button>
+                  <button type="button" class="seg-btn" data-zoom="30">Focus</button>
+                </div>
+              </div>
+              <div class="field">
+                <label>Points</label>
+                <input id="chartPoints" type="number" value="60" />
+              </div>
+              <button type="button" class="ghost" id="refreshTrades">Refresh</button>
+            </div>
+            <div class="chart-footer-meta">
+              <span id="chartFooterClock" class="mono">UTC</span>
+              <span class="mono">log</span>
+              <span class="mono">auto</span>
+            </div>
           </div>
         </div>
         <div class="bd chart-body">
-          <div class="chart-frame">
-            <div id="tapeChart" class="chart-host"></div>
+          <div class="chart-shell">
+            <div class="chart-toolrail" aria-hidden="true">
+              <button type="button" class="chart-toolbtn" tabindex="-1">&#10010;</button>
+              <button type="button" class="chart-toolbtn" tabindex="-1">&#9585;</button>
+              <button type="button" class="chart-toolbtn" tabindex="-1">&#9586;</button>
+              <button type="button" class="chart-toolbtn" tabindex="-1">&#9716;</button>
+              <button type="button" class="chart-toolbtn" tabindex="-1">T</button>
+              <button type="button" class="chart-toolbtn" tabindex="-1">&#128269;</button>
+            </div>
+            <div class="chart-mainpane">
+              <div class="chart-legend">
+                <div id="chartLegendMain" class="chart-legend-main">
+                  <span class="swatch"></span>
+                  <span class="mono">No public fills yet.</span>
+                </div>
+                <div id="chartLegendValues" class="chart-legend-values"></div>
+              </div>
+              <div id="tapeChart" class="chart-host"></div>
+              <div id="chartStatusBar" class="chart-statusbar"></div>
+            </div>
           </div>
-          <div id="chartStatusBar" class="chart-statusbar"></div>
         </div>
       </section>
 
@@ -2183,37 +2390,50 @@
             autoSize: true,
             layout: {
               background: { color: '#08121c' },
-              textColor: '#9db9d3'
+              textColor: '#93abc2',
+              fontFamily: '"IBM Plex Sans", "Söhne", "Inter", sans-serif'
             },
             grid: {
-              vertLines: { color: '#17324a' },
-              horzLines: { color: '#17324a' }
+              vertLines: { color: 'rgba(31, 51, 70, 0.74)' },
+              horzLines: { color: 'rgba(31, 51, 70, 0.74)' }
             },
             timeScale: {
               timeVisible: true,
-              secondsVisible: true,
-              rightOffset: 4,
-              borderColor: '#214056'
+              secondsVisible: false,
+              rightOffset: 8,
+              borderColor: '#1c3449',
+              barSpacing: 10,
+              minBarSpacing: 6
+            },
+            leftPriceScale: {
+              visible: true,
+              borderColor: '#1c3449',
+              scaleMargins: { top: 0.08, bottom: 0.28 }
             },
             rightPriceScale: {
-              borderColor: '#214056'
+              visible: true,
+              borderColor: '#1c3449',
+              scaleMargins: { top: 0.08, bottom: 0.28 }
             },
             crosshair: {
               mode: window.LightweightCharts.CrosshairMode.Normal
-            }
+            },
+            handleScroll: true,
+            handleScale: true
           });
           const candleOptions = {
-            upColor: '#2cd889',
-            downColor: '#ff6b7f',
+            upColor: '#21c8c0',
+            downColor: '#ff5f6d',
             borderVisible: false,
-            wickUpColor: '#2cd889',
-            wickDownColor: '#ff6b7f',
-            priceLineVisible: true
+            wickUpColor: '#21c8c0',
+            wickDownColor: '#ff5f6d',
+            priceLineVisible: true,
+            lastValueVisible: true
           };
           const volumeOptions = {
             priceFormat: { type: 'volume' },
             priceScaleId: '',
-            color: '#4ec7ff',
+            color: 'rgba(78, 199, 255, 0.45)',
             lastValueVisible: false
           };
           if (typeof chartApi.addCandlestickSeries === 'function') {
@@ -2232,7 +2452,7 @@
           }
           if (volumeSeries?.priceScale) {
             volumeSeries.priceScale().applyOptions({
-              scaleMargins: { top: 0.78, bottom: 0 }
+              scaleMargins: { top: 0.82, bottom: 0.02 }
             });
           }
           host.dataset.chartStatus = 'ready';
@@ -2249,6 +2469,96 @@
           });
           chartResizeBound = true;
         }
+      }
+
+      function updateChartHero(candles, trades, market) {
+        const rows = Array.isArray(candles) ? candles : [];
+        const last = rows.length ? rows[rows.length - 1] : null;
+        const first = rows.length ? rows[0] : null;
+        const lastPrice = Number(last?.close || 0);
+        const firstPrice = Number(first?.open || 0);
+        const change = lastPrice > 0 && firstPrice > 0 ? lastPrice - firstPrice : 0;
+        const changePct = lastPrice > 0 && firstPrice > 0 ? (change / firstPrice) * 100 : 0;
+        const volume = rows.reduce((sum, row) => sum + Number(row.volume || 0), 0);
+        const lastTrade = Array.isArray(trades) && trades.length ? trades[0] : null;
+        const pair = market?.pair || '-';
+        document.getElementById('chartHeroPair').textContent = pair;
+        document.getElementById('chartHeroVenue').textContent = market?.marketId ? `${market.marketId} · Zeko` : 'ShadowBook perpetual market';
+        document.getElementById('chartHeroPrice').textContent = last ? fmtDisplayNumber(last.close) : '-';
+        const changeNode = document.getElementById('chartHeroChange');
+        if (changeNode) {
+          changeNode.textContent = last
+            ? `${change >= 0 ? '+' : ''}${fmtDisplayNumber(change)} / ${changePct >= 0 ? '+' : ''}${fmtDisplayNumber(changePct)}%`
+            : '-';
+          changeNode.style.color = change >= 0 ? '#21c8c0' : '#ff6b7f';
+        }
+        document.getElementById('chartHeroVolume').textContent = volume > 0 ? fmtDisplayNumber(volume) : '-';
+        document.getElementById('chartHeroTime').textContent = lastTrade?.createdAtUnixMs ? fmtUtcTime(lastTrade.createdAtUnixMs) : '-';
+        document.getElementById('chartFooterClock').textContent = lastTrade?.createdAtUnixMs
+          ? `${fmtUtcTime(lastTrade.createdAtUnixMs)}`
+          : 'UTC';
+      }
+
+      function updateChartLegend(candles, trades, market) {
+        const rows = Array.isArray(candles) ? candles : [];
+        const last = rows.length ? rows[rows.length - 1] : null;
+        const legendMain = document.getElementById('chartLegendMain');
+        const legendValues = document.getElementById('chartLegendValues');
+        if (!legendMain || !legendValues) return;
+        if (!last) {
+          legendMain.innerHTML = '<span class="swatch"></span><span class="mono">No public fills yet.</span>';
+          legendValues.innerHTML = '';
+          return;
+        }
+        const intervalLabel = ({ 60: '1m', 300: '5m', 900: '15m', 3600: '1h' })[Number(document.getElementById('chartInterval')?.value || 60)] || '1m';
+        legendMain.innerHTML =
+          `<span class="swatch"></span>` +
+          `<span>${market?.pair || '-'} · ${intervalLabel} · ShadowBook</span>`;
+        const delta = Number(last.close || 0) - Number(last.open || 0);
+        const deltaPct = Number(last.open || 0) > 0 ? (delta / Number(last.open || 0)) * 100 : 0;
+        legendValues.innerHTML = [
+          `<span>O <strong>${fmtDisplayNumber(last.open)}</strong></span>`,
+          `<span>H <strong class="up">${fmtDisplayNumber(last.high)}</strong></span>`,
+          `<span>L <strong class="down">${fmtDisplayNumber(last.low)}</strong></span>`,
+          `<span>C <strong>${fmtDisplayNumber(last.close)}</strong></span>`,
+          `<span class="${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '+' : ''}${fmtDisplayNumber(delta)} (${deltaPct >= 0 ? '+' : ''}${fmtDisplayNumber(deltaPct)}%)</span>`
+        ].join('');
+      }
+
+      function applyChartSeries(candles, trades, market) {
+        ensureTradeChart();
+        if (!chartApi || !candleSeries || !volumeSeries) return false;
+        const rows = Array.isArray(candles) ? candles : [];
+        if (!rows.length) return false;
+        candleSeries.setData(rows.map((row) => ({
+          time: Number(row.time || 0),
+          open: Number(row.open || 0),
+          high: Number(row.high || 0),
+          low: Number(row.low || 0),
+          close: Number(row.close || 0)
+        })));
+        volumeSeries.setData(rows.map((row) => {
+          const open = Number(row.open || 0);
+          const close = Number(row.close || 0);
+          return {
+            time: Number(row.time || 0),
+            value: Number(row.volume || 0),
+            color: close >= open ? 'rgba(33, 200, 192, 0.45)' : 'rgba(255, 95, 109, 0.45)'
+          };
+        }));
+        const activeWindow = document.querySelector('#chartWindowButtons .seg-btn.active');
+        const zoomPct = Math.max(20, Math.min(100, Number(activeWindow?.dataset?.zoom || 100)));
+        const visibleCount = Math.max(12, Math.min(rows.length, Math.ceil(rows.length * (zoomPct / 100))));
+        const from = Math.max(0, rows.length - visibleCount);
+        const to = rows.length - 1;
+        if (chartApi.timeScale && typeof chartApi.timeScale().setVisibleLogicalRange === 'function') {
+          chartApi.timeScale().setVisibleLogicalRange({ from, to });
+        } else {
+          chartApi.timeScale().fitContent();
+        }
+        updateChartHero(rows, trades, market);
+        updateChartLegend(rows, trades, market);
+        return true;
       }
 
       function drawTapeChart(candles, trades, market) {
@@ -2461,12 +2771,11 @@
         const windowLabel = activeWindow ? activeWindow.textContent : 'All';
         const summary = [
           { label: 'Market', value: pairLabel },
-          { label: 'Last', value: last ? fmtDisplayNumber(last.close) : '-' },
           { label: 'Range', value: high !== null && low !== null ? `${fmtDisplayNumber(low)} - ${fmtDisplayNumber(high)}` : '-' },
           { label: 'Volume', value: volume > 0 ? fmtDisplayNumber(volume) : '-' },
           { label: 'Trades', value: String(Array.isArray(trades) ? trades.length : 0) },
           { label: 'Window', value: windowLabel },
-          { label: 'Tape', value: 'UTC public prints after all fills', note: true },
+          { label: 'Public Tape', value: 'UTC prints after all fills', note: true },
           { label: 'Last Print', value: lastTrade?.createdAtUnixMs ? fmtUtcTime(lastTrade.createdAtUnixMs) : 'UTC pending' }
         ];
         root.innerHTML = summary
@@ -2559,7 +2868,10 @@
           Array.isArray(candleData.candles) && candleData.candles.length
             ? candleData.candles
             : candlesFromTrades(trades, intervalSec, maxPoints);
-        drawTapeChart(candles, trades, selectedMarket);
+        const renderedWithLibrary = applyChartSeries(candles, trades, selectedMarket);
+        if (!renderedWithLibrary) drawTapeChart(candles, trades, selectedMarket);
+        updateChartHero(candles, trades, selectedMarket);
+        updateChartLegend(candles, trades, selectedMarket);
         renderChartSummary(candles, trades, selectedMarket);
         if ((document.getElementById('activityView')?.value || 'your') === 'global') {
           renderGlobalTradeRows(trades);
