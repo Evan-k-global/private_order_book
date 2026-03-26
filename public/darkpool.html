@@ -1,0 +1,3290 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ShadowBook | Private Order Book</title>
+    <script src="/assets/lightweight-charts.standalone.production.js"></script>
+    <style>
+      :root {
+        --bg: #06090f;
+        --panel: #0c131c;
+        --panel-alt: #101a26;
+        --line: #1f2d3d;
+        --ink: #d9e7f6;
+        --muted: #7f93aa;
+        --green: #2cd889;
+        --red: #ff6b7f;
+        --cyan: #4ec7ff;
+        --amber: #f2c572;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        font-family: "Söhne", "Inter", "IBM Plex Sans", sans-serif;
+        background: var(--bg);
+        position: relative;
+      }
+      .bg-video {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        z-index: 0;
+      }
+      .bg-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(6, 9, 15, 0.58);
+        z-index: 1;
+        pointer-events: none;
+      }
+      .brandbar,
+      .top-tabs,
+      .section-head,
+      .app,
+      .vault-strip {
+        position: relative;
+        z-index: 2;
+      }
+      .app {
+        max-width: 1320px;
+        margin: 0 auto;
+        padding: 16px;
+        display: grid;
+        grid-template-columns: minmax(360px, 430px) minmax(0, 1fr) minmax(260px, 320px);
+        grid-template-areas:
+          "entry chart chart"
+          "entry activity book";
+        gap: 12px;
+        align-items: start;
+      }
+      .col {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .card { align-self: start; }
+      .order-entry-card { grid-area: entry; }
+      .order-book-card { grid-area: activity; }
+      .price-chart-card { grid-area: chart; }
+      .activity-card { grid-area: book; }
+      .order-entry-card {
+        height: 904px;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+      .price-chart-card {
+        height: 648px;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .card .hd {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+      }
+      .card .bd {
+        padding: 12px;
+      }
+      h1 {
+        font-size: 16px;
+        margin: 0;
+        letter-spacing: 0.02em;
+      }
+      h2 {
+        font-size: 13px;
+        margin: 0;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: #a7bdd6;
+      }
+      .sub {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid #2c4157;
+        border-radius: 999px;
+        padding: 4px 9px;
+        font-size: 11px;
+        color: #9fc2df;
+        background: #0b1420;
+      }
+      .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--cyan); }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+      .stack { display: grid; gap: 8px; }
+      .inline-actions { display: flex; gap: 8px; margin-top: 6px; }
+      .inline-actions button { width: auto; padding: 6px 10px; font-size: 12px; }
+      .market-verify {
+        border: 1px solid #25415a;
+        background: #0a1724;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 11px;
+        line-height: 1.45;
+        color: #98b7d3;
+      }
+      .hint-box {
+        border: 1px solid #2f4760;
+        background: #0a1521;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 11px;
+        line-height: 1.45;
+        color: #9eb8cf;
+      }
+      .checklist {
+        border: 1px solid #2f4760;
+        background: #0a1521;
+        border-radius: 8px;
+        padding: 8px 10px;
+        display: grid;
+        gap: 4px;
+      }
+      .check-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        color: #9eb8cf;
+      }
+      .check-row strong {
+        font-weight: 600;
+      }
+      .check-ok { color: #76e7a6; }
+      .check-warn { color: #f2c572; }
+      .check-bad { color: #ff8a9d; }
+      label { font-size: 11px; color: #8ba5bf; display: block; margin-bottom: 4px; }
+      input, select, button, textarea {
+        width: 100%;
+        border: 1px solid #2a3d52;
+        background: #0a121b;
+        color: var(--ink);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 13px;
+      }
+      textarea { min-height: 70px; resize: vertical; }
+      button {
+        cursor: pointer;
+        border: 0;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        background: linear-gradient(120deg, #2a8cff, #25d0b5);
+        color: #001321;
+      }
+      button.txn {
+        background: linear-gradient(120deg, #2a8cff, #25d0b5);
+        color: #001321;
+      }
+      button.ghost {
+        border: 1px solid #2b3d50;
+        background: #0a121a;
+        color: #9bc0df;
+      }
+      button.sell { background: linear-gradient(120deg, #2a8cff, #25d0b5); color: #001321; }
+      button.buy { background: linear-gradient(120deg, #2a8cff, #25d0b5); color: #001321; }
+      .market-item {
+        padding: 10px;
+        border: 1px solid #213447;
+        border-radius: 10px;
+        display: grid;
+        gap: 6px;
+        background: #0a1118;
+      }
+      .kv { display: flex; justify-content: space-between; font-size: 12px; color: #9ab5cc; }
+      .kv strong { color: #d6e6f7; font-weight: 600; }
+      .tape {
+        height: 460px;
+        overflow: auto;
+        border: 1px solid #1f3246;
+        border-radius: 8px;
+        background: #09131d;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 90px 1fr 1fr 1fr;
+        gap: 8px;
+        padding: 7px 8px;
+        font-size: 12px;
+        border-bottom: 1px solid #152434;
+      }
+      .row:last-child { border-bottom: 0; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+      .green { color: var(--green); }
+      .red { color: var(--red); }
+      .amber { color: var(--amber); }
+      pre {
+        margin: 0;
+        max-height: 230px;
+        overflow: auto;
+        padding: 9px;
+        border: 1px solid #1f3347;
+        border-radius: 8px;
+        background: #07121d;
+        color: #b8d2ea;
+        font-size: 12px;
+      }
+      canvas {
+        width: 100%;
+        height: 180px;
+        display: block;
+        border: 1px solid #1f3346;
+        border-radius: 8px;
+        background: #08121c;
+      }
+      .footnote {
+        font-size: 11px;
+        color: #7e96ad;
+        line-height: 1.45;
+      }
+      .advanced-only { display: none; }
+      .book-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .book-col {
+        border: 1px solid #214056;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #09131d;
+      }
+      .book-col h4 {
+        margin: 0;
+        font-size: 11px;
+        padding: 8px;
+        border-bottom: 1px solid #1b3348;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .book-col.sell h4 { color: #ff9eb0; }
+      .book-col.buy h4 { color: #8ae6b5; }
+      .book-rows {
+        height: 360px;
+        overflow: auto;
+      }
+      .book-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        padding: 7px 8px;
+        border-bottom: 1px solid #14293c;
+        font-size: 12px;
+      }
+      .book-row:last-child { border-bottom: 0; }
+      .book-empty {
+        padding: 10px;
+        color: #7d97af;
+        font-size: 12px;
+      }
+      .price-chart-card .bd {
+        height: auto;
+        display: grid;
+        grid-template-rows: minmax(0, 1fr);
+        min-height: 0;
+        overflow: hidden;
+      }
+      .price-chart-card .hd {
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+      .order-entry-card .bd {
+        height: auto;
+        min-height: 0;
+        overflow: auto;
+      }
+      .chart-host {
+        width: 100%;
+        height: 100%;
+        min-height: 468px;
+        border: 1px solid #1f3346;
+        border-radius: 8px;
+        background: #08121c;
+        overflow: hidden;
+      }
+      .order-book-card .bd,
+      .activity-card .bd {
+        height: 446px;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+      .order-book-card .book-grid {
+        height: 100%;
+      }
+      .order-book-card .book-rows {
+        height: 100%;
+      }
+      .activity-table {
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+      #feeOut {
+        max-height: 86px;
+        font-size: 11px;
+      }
+      .activity-card .activity-body {
+        height: auto;
+      }
+      .chart-toolbar {
+        display: grid;
+        grid-template-columns: minmax(190px, 1fr) auto auto 96px 116px;
+        gap: 8px;
+        align-items: center;
+        width: 100%;
+        margin-left: 0;
+      }
+      .segmented {
+        display: inline-flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .seg-btn {
+        width: auto;
+        min-width: 46px;
+        padding: 7px 10px;
+        border: 1px solid #2b3d50;
+        background: #0a121a;
+        color: #9bc0df;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .seg-btn.active {
+        background: linear-gradient(120deg, #2a8cff, #25d0b5);
+        color: #001321;
+        border-color: transparent;
+      }
+      .chart-body {
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) auto;
+        gap: 12px;
+        min-height: 0;
+      }
+      .chart-frame {
+        display: grid;
+        min-height: 0;
+      }
+      .chart-statusbar {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 8px;
+        align-items: stretch;
+      }
+      .chart-pill-stat {
+        border: 1px solid #1f3346;
+        border-radius: 8px;
+        background: #09131d;
+        padding: 8px 10px;
+      }
+      .chart-pill-stat label {
+        margin: 0 0 3px 0;
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .chart-pill-stat .value {
+        font-size: 13px;
+        color: #d6e6f7;
+      }
+      .chart-pill-stat.note .value {
+        font-size: 11px;
+        line-height: 1.35;
+        color: #8ba5bf;
+      }
+      .chart-toolbar label {
+        margin: 0;
+        font-size: 11px;
+        color: #8ba5bf;
+      }
+      .chart-toolbar .field {
+        display: grid;
+        gap: 4px;
+      }
+      .chart-window .seg-btn {
+        min-width: 54px;
+      }
+      .operator-panel-card {
+        grid-column: 2 / 4;
+      }
+      .operator-panel-card .bd {
+        display: grid;
+        gap: 10px;
+      }
+      .operator-panel-meta {
+        border: 1px solid #1f3346;
+        border-radius: 8px;
+        background: #09131d;
+        padding: 8px 10px;
+        font-size: 11px;
+        color: #8ba5bf;
+        line-height: 1.45;
+      }
+      .withdraw-card {
+        border: 1px solid #2f4760;
+        background: #0a1521;
+        border-radius: 8px;
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+      }
+      .withdraw-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .withdraw-actions {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: end;
+      }
+      .withdraw-actions button {
+        width: auto;
+        min-width: 150px;
+      }
+      .withdraw-history {
+        border: 1px solid #1f3346;
+        border-radius: 8px;
+        background: #09131d;
+        max-height: 156px;
+        overflow: auto;
+      }
+      .withdraw-row {
+        display: grid;
+        grid-template-columns: 120px 1fr 1fr 1fr;
+        gap: 8px;
+        padding: 7px 8px;
+        border-bottom: 1px solid #152434;
+        font-size: 11px;
+      }
+      .withdraw-row:last-child { border-bottom: 0; }
+      .withdraw-empty {
+        padding: 10px;
+        color: #7d97af;
+        font-size: 12px;
+      }
+      .hd-tools {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .hd-tools select {
+        min-width: 170px;
+      }
+      .vault-zone {
+        background: #0e1a19;
+        border: 1px solid #2f5551;
+      }
+      .vault-zone .hd {
+        border-bottom: 1px solid #2f5551;
+      }
+      .vault-zone .hd h2 {
+        color: #9fe0d3;
+      }
+      .vault-strip {
+        max-width: 1320px;
+        margin: 10px auto 20px;
+        padding: 0 16px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .funding-left-col {
+        display: grid;
+        gap: 12px;
+        align-content: start;
+      }
+      .funding-sync,
+      .funding-guide,
+      .funding-notes {
+        align-self: start;
+      }
+      .section-head {
+        max-width: 1320px;
+        margin: 12px auto 6px;
+        padding: 0 16px;
+      }
+      .section-head h3 {
+        margin: 0;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: #91aac3;
+      }
+      .top-tabs {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-start;
+        padding: 0 4px;
+      }
+      .tab-btn {
+        width: auto;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid #2b4156;
+        background: #0b1420;
+        color: #a7c4df;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .tab-btn.active {
+        background: #11304a;
+        color: #b8ddff;
+        border-color: #2f5f87;
+      }
+      .brandbar {
+        width: 100%;
+        margin: 0;
+        padding: 10px 16px 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 20;
+        background: rgba(6, 9, 15, 0.72);
+        backdrop-filter: blur(6px);
+        border-bottom: 1px solid #1f2d3d;
+      }
+      .app {
+        margin-top: 72px;
+      }
+      .vault-strip {
+        margin-top: 84px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+      .brandbar > .pill {
+        margin-left: auto;
+      }
+      .logo-mark {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        border: 1px solid #2d4760;
+        background: #102337;
+        position: relative;
+        overflow: hidden;
+      }
+      .logo-mark::before,
+      .logo-mark::after {
+        content: "";
+        position: absolute;
+        border-radius: 999px;
+      }
+      .logo-mark::before {
+        width: 22px;
+        height: 22px;
+        top: -10px;
+        left: -6px;
+        background: radial-gradient(circle, rgba(78, 199, 255, 0.85) 0%, rgba(78, 199, 255, 0) 75%);
+      }
+      .logo-mark::after {
+        width: 18px;
+        height: 18px;
+        right: -7px;
+        bottom: -7px;
+        background: radial-gradient(circle, rgba(37, 208, 181, 0.75) 0%, rgba(37, 208, 181, 0) 75%);
+      }
+      .brand h1 {
+        margin: 0;
+        font-size: 15px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #d3e9ff;
+      }
+      .brand p {
+        margin: 0;
+        font-size: 11px;
+        color: #7f9bb5;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      .panel-hidden {
+        display: none;
+      }
+      .activity-strip {
+        max-width: 1320px;
+        margin: 0 auto 18px;
+        padding: 0 16px;
+      }
+      .activity-table {
+        border: 1px solid #1f3246;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #09131d;
+      }
+      .activity-head,
+      .activity-row {
+        display: grid;
+        grid-template-columns: 82px 110px 1fr 64px 90px 90px 1fr;
+        gap: 8px;
+        padding: 8px 10px;
+        font-size: 12px;
+      }
+      .activity-head {
+        background: #0f1f2f;
+        color: #9db9d3;
+        border-bottom: 1px solid #1d364a;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 11px;
+      }
+      .activity-body {
+        max-height: 290px;
+        overflow: auto;
+      }
+      .activity-row {
+        border-bottom: 1px solid #14293c;
+      }
+      .activity-row:last-child {
+        border-bottom: 0;
+      }
+      @media (max-width: 980px) {
+        .app {
+          grid-template-columns: 1fr;
+          grid-template-areas:
+            "entry"
+            "chart"
+            "activity"
+            "book";
+        }
+        .vault-strip { grid-template-columns: 1fr; }
+        .funding-left-col { display: contents; }
+        .brandbar {
+          flex-wrap: wrap;
+          justify-content: flex-start;
+        }
+        .top-tabs {
+          width: 100%;
+          justify-content: flex-start;
+          padding: 0;
+        }
+        .chart-toolbar {
+          width: 100%;
+          grid-template-columns: 1fr 1fr;
+        }
+        .chart-statusbar {
+          grid-template-columns: 1fr 1fr;
+        }
+        .withdraw-summary,
+        .withdraw-actions {
+          grid-template-columns: 1fr;
+        }
+        .operator-panel-card {
+          grid-column: auto;
+        }
+        .withdraw-row {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bg-overlay" aria-hidden="true"></div>
+    <div class="brandbar">
+      <div class="brand">
+        <div class="logo-mark" aria-hidden="true"></div>
+        <div>
+          <h1>ShadowBook</h1>
+          <p>private perpetuals on zeko</p>
+        </div>
+      </div>
+      <div class="top-tabs">
+        <button id="tabTrading" class="tab-btn active">Trading</button>
+        <button id="tabFunding" class="tab-btn">Funding</button>
+      </div>
+      <button type="button" class="ghost" id="globalConnectWalletBtn" style="width:auto;padding:6px 12px;">Connect Wallet</button>
+      <span class="pill">Zeko Testnet</span>
+    </div>
+    <div id="tradingPanel" class="app">
+      <section class="card order-entry-card">
+        <div class="hd"><h1>ShadowBook Private Order Entry</h1><span class="pill">App-Layer Privacy</span></div>
+        <div class="bd stack">
+          <div class="grid3">
+            <div>
+              <label>Wallet</label>
+              <input id="ordWallet" value="B62qdemo_wallet_alpha" />
+            </div>
+            <div>
+              <label>Market</label>
+              <select id="ordPair">
+                <option value="">loading...</option>
+              </select>
+            </div>
+            <div>
+              <label>Order Type</label>
+              <select id="ordType"><option>LIMIT</option><option>MARKET</option></select>
+            </div>
+          </div>
+          <input id="ordMarketId" type="hidden" />
+          <input id="replaceOrderId" type="hidden" />
+          <input id="replaceOrderToken" type="hidden" />
+          <input id="replaceOrderSide" type="hidden" />
+          <div id="ordIntent" class="sub mono"></div>
+          <div id="replaceOrderHint" class="hint-box" style="display:none;"></div>
+          <div id="ordFundingHint" class="hint-box"></div>
+          <div id="pretradeChecklist" class="checklist"></div>
+          <div class="grid3">
+            <div><label>Time In Force</label><select id="ordTif"><option>GTC</option><option>IOC</option></select></div>
+            <div id="ordPriceField"><label>Limit Price</label><input id="ordPrice" type="number" value="63980" /></div>
+            <div><label>Quantity</label><input id="ordQty" type="number" step="0.001" value="0.08" /></div>
+          </div>
+          <div class="grid2">
+            <div>
+              <label>Specific Note Hashes (Optional Override)</label>
+              <input id="ordFundingNote" placeholder="leave blank to auto-aggregate all matching notes" />
+            </div>
+            <div>
+              <label>Frontend ID</label>
+              <input id="ordFrontendId" value="shadowbook.web" />
+            </div>
+          </div>
+          <div class="grid2">
+            <div>
+              <label>Visibility</label>
+              <select id="ordVisibility">
+                <option value="public">Public Anonymous</option>
+                <option value="private">Private Dark</option>
+              </select>
+            </div>
+            <div id="ordVisibilityHint" class="hint-box"></div>
+          </div>
+          <div id="ordFundingModeHint" class="hint-box"></div>
+          <div class="grid2">
+            <button type="button" class="buy" id="placeBuy">Buy</button>
+            <button type="button" class="sell" id="placeSell">Sell</button>
+          </div>
+          <div id="marketVerify" class="market-verify mono"></div>
+          <pre id="orderOut"></pre>
+        </div>
+      </section>
+
+      <section class="card price-chart-card">
+        <div class="hd">
+          <h2>Price Chart</h2>
+          <div class="chart-toolbar">
+            <div class="field">
+              <label>Chart Market</label>
+              <select id="chartPair">
+                <option value="">loading...</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Interval</label>
+              <div class="segmented" id="chartIntervalButtons">
+                <button type="button" class="seg-btn active" data-interval="60">1m</button>
+                <button type="button" class="seg-btn" data-interval="300">5m</button>
+                <button type="button" class="seg-btn" data-interval="900">15m</button>
+                <button type="button" class="seg-btn" data-interval="3600">1h</button>
+              </div>
+              <select id="chartInterval" style="display:none;">
+                <option value="60">1m</option>
+                <option value="300">5m</option>
+                <option value="900">15m</option>
+                <option value="3600">1h</option>
+              </select>
+            </div>
+            <div class="field chart-window">
+              <label>Window</label>
+              <div class="segmented" id="chartWindowButtons">
+                <button type="button" class="seg-btn active" data-zoom="100">All</button>
+                <button type="button" class="seg-btn" data-zoom="75">Wide</button>
+                <button type="button" class="seg-btn" data-zoom="50">Tight</button>
+                <button type="button" class="seg-btn" data-zoom="30">Focus</button>
+              </div>
+            </div>
+            <div class="field">
+              <label>Points</label>
+              <input id="chartPoints" type="number" value="60" />
+            </div>
+            <button type="button" class="ghost" id="refreshTrades">Refresh</button>
+          </div>
+        </div>
+        <div class="bd chart-body">
+          <div class="chart-frame">
+            <div id="tapeChart" class="chart-host"></div>
+          </div>
+          <div id="chartStatusBar" class="chart-statusbar"></div>
+        </div>
+      </section>
+
+      <section class="card order-book-card">
+        <div class="hd"><h2>Order Book</h2><button type="button" class="ghost" id="refreshBookBtn">Refresh</button></div>
+        <div class="bd stack">
+          <div class="grid2">
+            <div>
+              <label>Book Market</label>
+              <select id="bookPair">
+                <option value="">loading...</option>
+              </select>
+            </div>
+            <div>
+              <label>Levels</label>
+              <input id="bookLevels" type="number" value="20" />
+            </div>
+          </div>
+          <div class="book-grid">
+            <div class="book-col buy">
+              <h4>Bids</h4>
+              <div id="bidRows" class="book-rows"></div>
+            </div>
+            <div class="book-col sell">
+              <h4>Asks</h4>
+              <div id="askRows" class="book-rows"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card activity-card">
+        <div class="hd">
+          <h2>Activity</h2>
+          <div class="hd-tools">
+            <select id="activityView">
+              <option value="your">Your Activity</option>
+              <option value="global">Global History</option>
+            </select>
+            <button type="button" class="ghost" id="refreshActivityBtn">Refresh</button>
+          </div>
+        </div>
+        <div class="bd stack">
+          <div class="grid3">
+            <div>
+              <label>Wallet</label>
+              <input id="activityWallet" value="B62qdemo_wallet_alpha" />
+            </div>
+            <div>
+              <label>Rows</label>
+              <input id="activityLimit" type="number" value="150" />
+            </div>
+            <div>
+              <label>Auto Refresh</label>
+              <select id="activityAuto"><option value="off">off</option><option value="on">on</option></select>
+            </div>
+          </div>
+          <div class="grid2">
+            <div>
+              <label>Fee View Frontend</label>
+              <input id="feeFrontendId" value="shadowbook.web" />
+            </div>
+            <div>
+              <label>&nbsp;</label>
+              <button type="button" class="ghost" id="refreshFeeBtn">Refresh Fee Stats</button>
+            </div>
+          </div>
+          <pre id="feeOut"></pre>
+          <div class="activity-table">
+            <div class="activity-head">
+              <div>Time</div>
+              <div>Action</div>
+              <div>Market/Asset</div>
+              <div>Side</div>
+              <div>Price</div>
+              <div>Qty</div>
+              <div>Notes</div>
+            </div>
+            <div id="activityRows" class="activity-body"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card advanced-only">
+          <div class="hd"><h2>Order Inspector</h2></div>
+          <div class="bd stack">
+            <label>Order ID</label>
+            <input id="inspectOrderId" placeholder="uuid" />
+            <label>Order Token</label>
+            <input id="inspectToken" placeholder="cancel token" />
+            <div class="grid2">
+              <button class="ghost" id="inspectBtn">Inspect</button>
+              <button class="ghost" id="cancelBtn">Cancel</button>
+            </div>
+            <pre id="inspectOut"></pre>
+          </div>
+      </section>
+
+      <section class="card advanced-only">
+          <div class="hd"><h2>Maker Tools</h2></div>
+          <div class="bd stack">
+            <div class="footnote">Testing-only maker controls. Production makers should call authenticated APIs directly.</div>
+            <div class="grid2">
+              <div><label>Maker Wallet</label><input id="makerWallet" value="B62qdemo_maker_wallet" /></div>
+              <div><label>Pair</label><input id="makerPair" value="tETH/tZEKO" readonly /></div>
+            </div>
+            <input id="makerMarketId" type="hidden" />
+            <div class="grid2">
+              <div><label>Bid Price</label><input id="makerBidPx" type="number" value="63950" /></div>
+              <div><label>Ask Price</label><input id="makerAskPx" type="number" value="64050" /></div>
+            </div>
+            <div class="grid2">
+              <div><label>Bid Size</label><input id="makerBidSz" type="number" step="0.001" value="0.15" /></div>
+              <div><label>Ask Size</label><input id="makerAskSz" type="number" step="0.001" value="0.15" /></div>
+            </div>
+            <div class="grid2">
+              <div><label>TIF</label><select id="makerTif"><option>GTC</option><option>IOC</option></select></div>
+              <div><label>Replace Existing</label><select id="makerReplace"><option value="true">true</option><option value="false">false</option></select></div>
+            </div>
+            <div><label>Maker API Key</label><input id="makerKey" value="demo-maker-key" /></div>
+            <div class="grid2">
+              <button id="makerQuoteBtn">Post Two-Sided Quote</button>
+              <button class="ghost" id="makerCancelAllBtn">Cancel All For Pair</button>
+            </div>
+            <pre id="makerOut"></pre>
+          </div>
+      </section>
+
+      <section class="card operator-panel-card panel-hidden" id="operatorPanelCard">
+        <div class="hd"><h2>Operator Panel</h2></div>
+        <div class="bd stack">
+          <div class="operator-panel-meta">
+            Live operator controls for the on-chain settlement anchor. Use this to inspect zkApp roots, inspect the current Merkle-backed private state, build the next private-state witness, and prove the next pending batch.
+          </div>
+          <div class="footnote" id="operatorPanelNote">
+            Manual operator actions are gated by the operator admin key. The background operator process still runs independently.
+          </div>
+          <div>
+            <label>Operator Admin Key</label>
+            <input id="operatorAdminKey" type="password" placeholder="Enter admin key to enable manual operator actions" />
+          </div>
+          <div class="grid2">
+            <button type="button" class="ghost" id="refreshOperatorBtn">Refresh Operator</button>
+            <button type="button" class="ghost" id="inspectMerkleBtn">Inspect Merkle State</button>
+            <button type="button" class="ghost" id="buildWitnessBtn">Build Witness</button>
+            <button type="button" class="ghost" id="provePrivateStateBtn">Prove Next Batch</button>
+          </div>
+          <pre id="operatorOut"></pre>
+        </div>
+      </section>
+    </div>
+
+    <div id="fundingPanel" class="vault-strip panel-hidden">
+      <div class="funding-left-col">
+        <section class="card vault-zone funding-sync">
+          <div class="hd"><h2>On-Chain Funding</h2></div>
+          <div class="bd stack">
+            <div class="footnote">
+              Real-funds-only mode: fund your wallet on Zeko testnet, then sync balances into ShadowBook.
+              Limit order collateral is locked at placement and unlocked on fill, cancel, or expiry.
+            </div>
+            <div><label>Wallet</label><input id="chainWallet" value="B62qdemo_wallet_alpha" /></div>
+            <div class="grid2">
+              <button id="syncBtn" class="txn">Sync On-Chain Balance</button>
+              <button class="ghost" id="balBtn">Refresh Balance</button>
+            </div>
+            <pre id="balOut"></pre>
+          </div>
+        </section>
+
+        <section class="card vault-zone funding-guide">
+          <div class="hd"><h2>Funding Guide</h2></div>
+          <div class="bd stack">
+            <div class="footnote mono">
+              1) Acquire testnet tETH/tZEKO/tMINA in wallet.
+              2) Connect wallet in Trading tab (or paste wallet above).
+              3) Click Sync On-Chain Balance.
+              4) Send on-chain token transfer to the vault deposit address (wallet signs tx).
+              5) Mint note using the signed deposit tx hash, then paste note into order entry.
+              6) Place orders.
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="card vault-zone funding-notes">
+        <div class="hd"><h2>Privacy Notes</h2></div>
+        <div class="bd stack">
+          <div class="footnote">
+            What this does: convert a real on-chain vault deposit into private collateral. Trading uses your available notes automatically unless you override with specific note hashes.
+          </div>
+          <div class="grid3">
+            <div><label>Asset</label><select id="noteAsset"></select></div>
+            <div><label>Amount</label><input id="noteAmount" type="number" value="1" /></div>
+            <div><label>Wallet</label><input id="noteWallet" value="B62qdemo_wallet_alpha" /></div>
+          </div>
+          <div id="noteAssetMeta" class="market-verify mono"></div>
+          <div class="withdraw-card">
+            <div class="withdraw-summary">
+              <div>
+                <label>Withdrawable Note Balance</label>
+                <div id="withdrawSummary" class="value mono">Loading...</div>
+              </div>
+              <div>
+                <label>Recent Withdrawals</label>
+                <div id="withdrawStatus" class="value mono">No withdrawals yet</div>
+              </div>
+            </div>
+            <div class="withdraw-actions">
+              <button class="ghost" id="withdrawNotesPrimaryBtn">Withdraw Notes to Wallet</button>
+              <button class="ghost" id="poolBtn">Note Pool Status</button>
+            </div>
+            <div id="withdrawHistory" class="withdraw-history">
+              <div class="withdraw-empty">Withdrawals will appear here after you redeem private collateral back to your wallet.</div>
+            </div>
+          </div>
+          <div class="footnote">
+            Step 1: Click <span class="mono">Send Deposit Tx (Wallet)</span> and approve in wallet.<br />
+            Step 2: Click <span class="mono">Mint Note (Auto)</span>.<br />
+            Step 3: Your private collateral appears below and is auto-used by trading.
+          </div>
+          <div class="grid2">
+            <button class="txn" id="sendDepositTxBtn">Send Deposit Tx (Wallet)</button>
+            <button class="txn" id="mintAutoNoteBtn">Mint Note (Auto Find Deposit)</button>
+          </div>
+          <details id="noteAdvanced" class="stack">
+            <summary class="footnote mono">Advanced / Agent Controls</summary>
+            <div>
+              <label>Signed Deposit Tx Hash (Manual)</label>
+              <input id="noteDepositTxHash" placeholder="5J..." />
+            </div>
+            <div class="grid2">
+              <button class="ghost" id="findDepositTxBtn">Find Deposit Tx (Agent/CLI Helper)</button>
+              <button class="txn" id="mintNoteBtn">Mint Note From Tx Hash (Manual)</button>
+            </div>
+            <div class="footnote">Withdraw is available directly above in the main note controls.</div>
+          </details>
+          <div id="noteDepositHint" class="hint-box mono"></div>
+          <button class="ghost" id="refreshNotesBtn">Refresh My Notes</button>
+          <label>Latest Minted Note</label>
+          <textarea id="noteInput" placeholder="zkv_..."></textarea>
+          <label>Wallet + Private Collateral</label>
+          <pre id="notesPortfolioOut"></pre>
+          <pre id="vaultOut"></pre>
+        </div>
+      </section>
+    </div>
+
+    <script src="/sdk/shadowbook-sdk.js"></script>
+    <script>
+      const sdk = window.ShadowBookSDK.createClient({
+        baseUrl: window.location.origin,
+        frontendId: 'shadowbook.web'
+      });
+      // Defensive cleanup for older cached markup variants.
+      for (const btn of Array.from(document.querySelectorAll('button'))) {
+        const label = String(btn.textContent || '').trim().toLowerCase();
+        const id = String(btn.id || '').trim().toLowerCase();
+        if (label.includes('prune incomplete') || id.includes('prune')) btn.remove();
+      }
+      let knownMarkets = [];
+      let latestNotesPortfolio = null;
+      let realFundsMode = true;
+      let requireOnchainDepositTx = true;
+      let vaultDepositAddress = '';
+      let walletConnected = false;
+      let chartApi = null;
+      let candleSeries = null;
+      let volumeSeries = null;
+      let chartResizeBound = false;
+      let lastNonMarketTif = 'GTC';
+      let operatorPanelAllowedWallet = null;
+      let operatorPanelAdminKeyConfigured = false;
+      const walletSyncTimes = new Map();
+      const WALLET_SYNC_COOLDOWN_MS = 20000;
+
+      function syncFrontendIdFromUi() {
+        const orderFrontend = document.getElementById('ordFrontendId')?.value?.trim();
+        const feeFrontend = document.getElementById('feeFrontendId')?.value?.trim();
+        const next = (orderFrontend || feeFrontend || 'shadowbook.web').toLowerCase();
+        sdk.frontendId = next;
+        if (document.getElementById('ordFrontendId')) document.getElementById('ordFrontendId').value = next;
+        if (document.getElementById('feeFrontendId')) document.getElementById('feeFrontendId').value = next;
+        return next;
+      }
+
+      function mapNumbersForDisplay(value) {
+        if (typeof value === 'number') return fmtDisplayNumber(value);
+        if (Array.isArray(value)) return value.map((v) => mapNumbersForDisplay(v));
+        if (value && typeof value === 'object') {
+          const out = {};
+          for (const [k, v] of Object.entries(value)) out[k] = mapNumbersForDisplay(v);
+          return out;
+        }
+        return value;
+      }
+
+      function setText(id, value) {
+        document.getElementById(id).textContent =
+          typeof value === 'string' ? value : JSON.stringify(mapNumbersForDisplay(value), null, 2);
+      }
+
+      function getConnectedWalletValue() {
+        return String(document.getElementById('ordWallet')?.value || '').trim();
+      }
+
+      function getOperatorAdminKey() {
+        return String(document.getElementById('operatorAdminKey')?.value || '').trim();
+      }
+
+      function shouldRenderOperatorPanel() {
+        const wallet = getConnectedWalletValue();
+        if (!walletConnected || !wallet) return false;
+        if (!operatorPanelAllowedWallet) return true;
+        return wallet === operatorPanelAllowedWallet;
+      }
+
+      function hasOperatorPanelAccess() {
+        return shouldRenderOperatorPanel() && (!operatorPanelAdminKeyConfigured || Boolean(getOperatorAdminKey()));
+      }
+
+      function updateOperatorPanelState() {
+        const wallet = getConnectedWalletValue();
+        const visible = shouldRenderOperatorPanel();
+        const allowed = hasOperatorPanelAccess();
+        const panel = document.getElementById('operatorPanelCard');
+        const note = document.getElementById('operatorPanelNote');
+        const buttonIds = ['refreshOperatorBtn', 'inspectMerkleBtn', 'buildWitnessBtn', 'provePrivateStateBtn'];
+        if (panel) panel.classList.toggle('panel-hidden', !visible);
+        for (const id of buttonIds) {
+          const el = document.getElementById(id);
+          if (!el) continue;
+          el.disabled = !allowed;
+          el.title = allowed
+            ? ''
+            : !visible
+              ? operatorPanelAllowedWallet
+                ? `Operator panel is only visible for deployer wallet ${operatorPanelAllowedWallet}`
+                : 'Connect the deployer wallet to view the operator panel'
+              : operatorPanelAdminKeyConfigured
+              ? 'Enter the operator admin key to use operator actions'
+              : operatorPanelAllowedWallet
+                ? `Connect allowed deployer wallet ${operatorPanelAllowedWallet}`
+                : 'Connect the deployer wallet to use operator actions';
+        }
+        if (!visible) return;
+        if (!note) return;
+        if (operatorPanelAdminKeyConfigured) {
+          note.textContent = allowed
+            ? 'Manual operator actions are enabled with the operator admin key. The background operator process still runs independently.'
+            : 'Enter the operator admin key to trigger manual operator actions. The background operator process still runs independently.';
+          return;
+        }
+        if (allowed) {
+          note.textContent = `Connected deployer wallet ${wallet} can trigger manual operator actions. These actions are signed in the browser and verified by the backend.`;
+        } else if (operatorPanelAllowedWallet) {
+          note.textContent = walletConnected && wallet
+            ? `Operator actions are restricted to ${operatorPanelAllowedWallet}. Connected wallet ${wallet} can inspect the panel but cannot trigger buttons.`
+            : `Operator actions are restricted to connected deployer wallet ${operatorPanelAllowedWallet}. Connect that wallet to trigger buttons.`;
+        } else {
+          note.textContent = walletConnected && wallet
+            ? `Manual operator actions are enabled only for the connected deployer wallet.`
+            : `Connect the deployer wallet to trigger manual operator actions.`;
+        }
+      }
+
+      function requireOperatorPanelAdminKey() {
+        const adminKey = getOperatorAdminKey();
+        if (!adminKey) throw new Error('enter the operator admin key to use operator actions');
+        return adminKey;
+      }
+
+      function shortHash(value) {
+        if (!value || typeof value !== 'string') return '-';
+        return value.length <= 14 ? value : value.slice(0, 7) + '...' + value.slice(-5);
+      }
+
+      function fmtDisplayNumber(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return '-';
+        if (Math.abs(n - Math.trunc(n)) < 1e-9) return n.toFixed(2);
+        return n.toFixed(4).replace(/\.?0+$/, '');
+      }
+
+      function fmtUtcTime(value) {
+        const ms = Number(value);
+        if (!Number.isFinite(ms) || ms <= 0) return '-';
+        return new Date(ms).toLocaleTimeString('en-US', {
+          hour12: false,
+          timeZone: 'UTC',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }) + ' UTC';
+      }
+
+      function stableStringify(value) {
+        if (value === null || typeof value !== 'object') return JSON.stringify(value);
+        if (Array.isArray(value)) return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+        const keys = Object.keys(value).sort();
+        return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(',')}}`;
+      }
+
+      function getMarketById(marketId) {
+        return knownMarkets.find((m) => m.marketId === marketId) || null;
+      }
+
+      function getAssetCatalog() {
+        const map = new Map();
+        for (const m of knownMarkets || []) {
+          if (m?.baseAsset && m?.baseTokenId) map.set(String(m.baseAsset).toUpperCase(), { asset: m.baseAsset, tokenId: m.baseTokenId });
+          if (m?.quoteAsset && m?.quoteTokenId) map.set(String(m.quoteAsset).toUpperCase(), { asset: m.quoteAsset, tokenId: m.quoteTokenId });
+        }
+        return Array.from(map.values());
+      }
+
+      function updateSelectedNoteAssetMeta() {
+        const select = document.getElementById('noteAsset');
+        const meta = document.getElementById('noteAssetMeta');
+        if (!select || !meta) return;
+        const opt = select.options[select.selectedIndex];
+        if (!opt) {
+          meta.textContent = 'No asset selected';
+          return;
+        }
+        const tokenId = opt.getAttribute('data-token-id') || '';
+        const avail = opt.getAttribute('data-avail') || '';
+        meta.textContent = `Asset: ${opt.value} | Token ID: ${tokenId} | Available: ${avail}`;
+        updateDepositActionState();
+      }
+
+      function updateDepositActionState() {
+        const sendBtn = document.getElementById('sendDepositTxBtn');
+        const hint = document.getElementById('noteDepositHint');
+        if (!sendBtn || !hint) return;
+        const asset = String(document.getElementById('noteAsset')?.value || '').trim();
+        sendBtn.disabled = false;
+        if (asset.toUpperCase() === 'TMINA') {
+          hint.textContent =
+            `One-click deposit uses a native payment flow for ${asset}. Vault: ${vaultDepositAddress || '(not configured)'}.`;
+          return;
+        }
+        hint.textContent =
+          `One-click deposit builds an FT-standard transfer transaction for ${asset} and asks your wallet to sign it. Vault: ` +
+          `${vaultDepositAddress || '(not configured)'}.`;
+      }
+
+      function updateNoteDepositHint() {
+        const hint = document.getElementById('noteDepositHint');
+        if (!hint) return;
+        if (!requireOnchainDepositTx) {
+          hint.textContent = 'Deposit tx verification disabled on server (testing mode).';
+          return;
+        }
+        updateDepositActionState();
+      }
+
+      function extractWalletTxHash(response) {
+        if (!response) return '';
+        if (typeof response === 'string') return response.startsWith('5J') ? response : '';
+        const candidates = [
+          response.hash,
+          response.txHash,
+          response?.data?.hash,
+          response?.data?.txHash,
+          response?.result?.hash,
+          response?.result?.txHash,
+          response?.payment?.hash
+        ];
+        for (const c of candidates) {
+          const s = typeof c === 'string' ? c.trim() : '';
+          if (s.startsWith('5J')) return s;
+        }
+        return '';
+      }
+
+      function toAuroTransactionString(transaction) {
+        const original = typeof transaction === 'string' ? JSON.parse(transaction) : transaction;
+        const tx = JSON.parse(JSON.stringify(original));
+        if (tx?.feePayer?.body?.fee === '0') {
+          // Lumina works around an Auro edge case by forcing a non-zero fee here.
+          tx.feePayer.body.fee = '1';
+        }
+        return JSON.stringify(tx);
+      }
+
+      function extractSignedZkappCommand(response, wallet) {
+        const signedData = response?.signedData || response;
+        if (!signedData) throw new Error('wallet returned no signedData');
+        const parsed = typeof signedData === 'string' ? JSON.parse(signedData) : signedData;
+        const zkappCommand =
+          parsed?.zkappCommand ||
+          parsed?.data?.zkappCommand ||
+          parsed?.signedData?.zkappCommand ||
+          null;
+        if (!zkappCommand || typeof zkappCommand !== 'object') {
+          throw new Error('wallet signedData did not contain zkappCommand');
+        }
+        if (zkappCommand?.feePayer?.body?.publicKey && zkappCommand.feePayer.body.publicKey !== wallet) {
+          zkappCommand.feePayer.authorization =
+            '7mWxjLYgbJUkZNcGouvhVj5tJ8yu9hoexb9ntvPK8t5LHqzmrL6QJjjKtf5SgmxB4QWkDw7qoMMbbNGtHVpsbJHPyTy2EzRQ';
+        }
+        return zkappCommand;
+      }
+
+      async function syncWalletContext(wallet, outputId) {
+        if (!wallet) throw new Error('Wallet is required');
+        const result = await sdk.syncOnchainBalance({ wallet });
+        const targets = ['ordWallet', 'activityWallet', 'chainWallet', 'noteWallet'];
+        for (const id of targets) {
+          const el = document.getElementById(id);
+          if (el) el.value = wallet;
+        }
+        if (outputId) setText(outputId, result);
+        await refreshNoteAssetOptions();
+        await refreshNotesPortfolio();
+        await refreshPretradeChecklist();
+        return result;
+      }
+
+      async function sendDepositTxWithWallet() {
+        const provider = window.mina;
+        if (!provider) throw new Error('No Mina wallet provider found in browser');
+        if (!vaultDepositAddress) throw new Error('Vault address is not configured on server');
+        const wallet = document.getElementById('noteWallet').value.trim();
+        const amount = Number(document.getElementById('noteAmount').value || 0);
+        if (!wallet) throw new Error('Wallet is required');
+        if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be positive');
+        await syncWalletContext(wallet, 'balOut');
+        const selected = document.getElementById('noteAsset').selectedOptions?.[0];
+        const tokenId = selected?.getAttribute('data-token-id') || '';
+        const asset = document.getElementById('noteAsset').value.trim() || 'asset';
+        const memo = `shadowbook-deposit:${asset}`;
+        const attempts = [];
+
+        if (asset.toUpperCase() === 'TMINA') {
+          if (typeof provider.sendPayment === 'function') {
+            try {
+              const response = await provider.sendPayment({
+                to: vaultDepositAddress,
+                amount: String(amount),
+                memo
+              });
+              const txHash = extractWalletTxHash(response);
+              return { method: 'sendPayment', response, txHash, asset, tokenId: null };
+            } catch (e) {
+              attempts.push(`sendPayment: ${String(e?.message || e)}`);
+            }
+          }
+          if (typeof provider.request === 'function') {
+            const requestAttempts = [
+              {
+                method: 'mina_sendPayment',
+                params: {
+                  to: vaultDepositAddress,
+                  amount: String(amount),
+                  memo
+                }
+              }
+            ];
+            for (const req of requestAttempts) {
+              try {
+                const response = await provider.request({ method: req.method, params: req.params });
+                const txHash = extractWalletTxHash(response);
+                return { method: req.method, response, txHash, asset, tokenId: null };
+              } catch (e) {
+                attempts.push(`${req.method}: ${String(e?.message || e)}`);
+              }
+            }
+          }
+          throw new Error(
+            `Wallet did not accept the native payment deposit for ${asset}. Attempts: ${attempts.join(' | ') || 'none'}`
+          );
+        }
+
+        const built = await sdk.buildDepositTransaction({
+          wallet,
+          asset,
+          tokenId,
+          amount,
+          memo
+        });
+        const txPayload = toAuroTransactionString(built.transaction);
+        if (typeof provider.sendTransaction === 'function') {
+          try {
+            const response = await provider.sendTransaction({
+              onlySign: true,
+              transaction: txPayload
+            });
+            const zkappCommand = extractSignedZkappCommand(response, wallet);
+            const submitted = await sdk.submitSignedDepositTransaction({
+              zkappCommand
+            });
+            const txHash = extractWalletTxHash(submitted) || submitted?.hash || '';
+            return {
+              method: 'sendTransaction:onlySign+submit',
+              response,
+              txHash,
+              asset,
+              tokenId: tokenId || null,
+              built,
+              submitted
+            };
+          } catch (e) {
+            attempts.push(`sendTransaction: ${String(e?.message || e)}`);
+            const msg = String(e?.message || e);
+            if (msg.toLowerCase().includes('sendzkapp') || msg.toLowerCase().includes('sequencer') || msg.includes('Invalid_fee_excess')) {
+              throw new Error(
+                `Wallet signed the token deposit transaction, but sequencer submission failed for ${asset}. ` +
+                `Attempt: ${attempts.join(' | ')}`
+              );
+            }
+            throw new Error(`Wallet did not accept the generated token deposit transaction for ${asset}. Attempts: ${attempts.join(' | ')}`);
+          }
+        }
+        if (typeof provider.request === 'function') {
+          const requestAttempts = [
+            {
+              method: 'mina_sendTransaction',
+              params: {
+                onlySign: true,
+                transaction: txPayload
+              }
+            }
+          ];
+          for (const req of requestAttempts) {
+            try {
+              const response = await provider.request({ method: req.method, params: req.params });
+              const zkappCommand = extractSignedZkappCommand(response, wallet);
+              const submitted = await sdk.submitSignedDepositTransaction({
+                zkappCommand
+              });
+              const txHash = extractWalletTxHash(submitted) || submitted?.hash || '';
+              return {
+                method: `${req.method}:onlySign+submit`,
+                response,
+                txHash,
+                asset,
+                tokenId: tokenId || null,
+                built,
+                submitted
+              };
+            } catch (e) {
+              attempts.push(`${req.method}: ${String(e?.message || e)}`);
+            }
+          }
+        }
+        throw new Error(
+          `Wallet did not accept the generated token deposit transaction for ${asset}. ` +
+          `Use wallet UI to send to ${vaultDepositAddress}, then click Find Latest Eligible Deposit Tx. ` +
+          `Attempts: ${attempts.join(' | ') || 'none'}`
+        );
+      }
+
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      async function autoMintNoteFromLatestDeposit(options = {}) {
+        const selected = document.getElementById('noteAsset').selectedOptions?.[0];
+        const tokenId = selected?.getAttribute('data-token-id') || '';
+        const payload = {
+          wallet: document.getElementById('noteWallet').value.trim(),
+          asset: document.getElementById('noteAsset').value.trim(),
+          tokenId,
+          amount: Number(document.getElementById('noteAmount').value || 0),
+          txHash: options.txHash || document.getElementById('noteDepositTxHash').value.trim()
+        };
+        const attempts = Number.isFinite(Number(options.attempts)) ? Number(options.attempts) : 6;
+        const delayMs = Number.isFinite(Number(options.delayMs)) ? Number(options.delayMs) : 2500;
+        let lastError = null;
+        for (let i = 0; i < attempts; i += 1) {
+          try {
+            const result = await sdk.depositAuto(payload);
+            if (result.note?.note) {
+              document.getElementById('noteInput').value = result.note.note;
+            }
+            if (result.verifiedDepositTx?.txHash) {
+              document.getElementById('noteDepositTxHash').value = result.verifiedDepositTx.txHash;
+            }
+            await syncWalletContext(payload.wallet, 'balOut');
+            await refreshNoteAssetOptions();
+            await refreshNotesPortfolio();
+            await refreshPretradeChecklist();
+            if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
+            return result;
+          } catch (error) {
+            lastError = error;
+            if (i < attempts - 1) {
+              await sleep(delayMs);
+            }
+          }
+        }
+        throw lastError || new Error('auto note mint failed');
+      }
+
+      async function refreshNoteAssetOptions() {
+        const select = document.getElementById('noteAsset');
+        const wallet = document.getElementById('noteWallet')?.value?.trim();
+        if (!select) return;
+        const catalog = getAssetCatalog();
+        const previous = select.value;
+        let balances = {};
+        if (wallet) {
+          try {
+            const bal = await sdk.getBalance(wallet);
+            balances = bal?.onchainTotals || bal?.balances?.__onchainTotals || {};
+          } catch {}
+        }
+        select.innerHTML = '';
+        for (const item of catalog) {
+          const key = String(item.asset || '').toUpperCase();
+          const avail = Number(balances[key] || 0);
+          const opt = document.createElement('option');
+          opt.value = item.asset;
+          opt.textContent = `${item.asset} (${fmtDisplayNumber(avail)})`;
+          opt.setAttribute('data-token-id', item.tokenId);
+          opt.setAttribute('data-avail', fmtDisplayNumber(avail));
+          select.appendChild(opt);
+        }
+        if (previous && Array.from(select.options).some((o) => o.value === previous)) select.value = previous;
+        updateSelectedNoteAssetMeta();
+      }
+
+      async function refreshNotesPortfolio() {
+        const wallet = document.getElementById('noteWallet')?.value?.trim();
+        if (!wallet) return;
+        try {
+          const data = await sdk.getNotesPortfolio(wallet);
+          latestNotesPortfolio = data;
+          const walletTotals = data?.onchainTotals || {};
+          const byAsset = data?.outstandingByAsset || {};
+          const outstanding = Array.isArray(data?.outstandingNotes) ? data.outstandingNotes : [];
+          const lines = [];
+          lines.push('Wallet totals');
+          for (const [asset, amount] of Object.entries(walletTotals)) {
+            lines.push(`  ${asset}: ${fmtDisplayNumber(amount)}`);
+          }
+          lines.push('');
+          lines.push(`Private collateral notes (${Number(data?.outstandingNoteCount || 0)})`);
+          if (Object.keys(byAsset).length === 0) {
+            lines.push('  none');
+          } else {
+            for (const [asset, amount] of Object.entries(byAsset)) {
+              lines.push(`  ${asset}: ${fmtDisplayNumber(amount)}`);
+            }
+          }
+          lines.push('');
+          lines.push('Recent notes');
+          if (outstanding.length === 0) {
+            lines.push('  none');
+          } else {
+            for (const note of outstanding.slice(0, 8)) {
+              lines.push(
+                `  ${note.asset} ${fmtDisplayNumber(note.amount)}  ${shortHash(note.noteHash)}  ${new Date(note.createdAtUnixMs).toLocaleTimeString()}`
+              );
+            }
+          }
+          document.getElementById('notesPortfolioOut').textContent = lines.join('\n');
+          await refreshWithdrawPanel();
+        } catch (error) {
+          latestNotesPortfolio = null;
+          setText('notesPortfolioOut', String(error));
+          await refreshWithdrawPanel();
+        }
+      }
+
+      function renderMarketVerify(market) {
+        const root = document.getElementById('marketVerify');
+        if (!market) {
+          root.textContent = 'Market metadata unavailable';
+          return;
+        }
+        const bands = Array.isArray(market?.depthBands?.bands) ? market.depthBands.bands : [];
+        const bandText = bands.length
+          ? '\n' + bands.map((band) =>
+              `Depth ${Math.round(Number(band.pct || 0) * 100)}%: bids ${fmtDisplayNumber(band.bidsSize)} / asks ${fmtDisplayNumber(band.asksSize)}`
+            ).join('\n')
+          : '';
+        root.textContent =
+          `Market ID: ${market.marketId}\n` +
+          `Base: ${market.baseAsset} (${market.baseTokenId})\n` +
+          `Quote: ${market.quoteAsset} (${market.quoteTokenId})\n` +
+          `Best Bid / Ask: ${fmtDisplayNumber(market.bestBid)} / ${fmtDisplayNumber(market.bestAsk)}\n` +
+          `Indicative Mid: ${fmtDisplayNumber(market.indicativeMid)}` +
+          bandText;
+      }
+
+      function updateOrderIntent(market) {
+        const root = document.getElementById('ordIntent');
+        if (!market) {
+          root.textContent = '';
+          return;
+        }
+        root.textContent = `Buttons trade base asset: Buy ${market.baseAsset} with ${market.quoteAsset} / Sell ${market.baseAsset} for ${market.quoteAsset}`;
+        document.getElementById('placeBuy').textContent = `Buy ${market.baseAsset}`;
+        document.getElementById('placeSell').textContent = `Sell ${market.baseAsset}`;
+        updateFundingHint();
+      }
+
+      function updateFundingHint() {
+        const marketId = document.getElementById('ordMarketId')?.value?.trim();
+        const market = getMarketById(marketId);
+        const orderType = document.getElementById('ordType')?.value || 'LIMIT';
+        const hint = document.getElementById('ordFundingHint');
+        if (!hint) return;
+        if (!market) {
+          hint.textContent = 'Select a market to see funding requirements.';
+          return;
+        }
+        hint.textContent =
+          `Real-funds-only mode: sync wallet balances before trading. ` +
+          `Wallet totals stay on-chain; private notes provide the collateral consumed by orders. ` +
+          `${orderType === 'MARKET' ? 'Market orders are IOC and only execute against standing opposite liquidity.' : 'Limit orders lock collateral until filled, canceled, or expired.'}`;
+      }
+
+      function updateFundingModeHint() {
+        const hint = document.getElementById('ordFundingModeHint');
+        if (!hint) return;
+        hint.textContent =
+          'Orders are note-collateralized only. The UI auto-selects eligible private notes by asset, then asks your wallet to sign the order authorization. Paste note hashes only to force a specific note set.';
+      }
+
+      function formatOrderError(error) {
+        const msg = String(error || '');
+        if (msg.includes('on-chain balances are stale')) {
+          return 'On-chain balance sync required. Click Connect Wallet or Sync On-Chain Balance, then retry.';
+        }
+        if (msg.includes('wallet-funded trading removed')) {
+          return 'Trading is note-backed only. Mint privacy notes first, then place the order.';
+        }
+        if (msg.includes('wallet-signed order authorization')) {
+          return 'Wallet signature required. Approve the order authorization in your wallet and retry.';
+        }
+        if (msg.includes('wallet linkage missing')) {
+          return 'Wallet must be synced first in Real Funds Mode. Use Connect Wallet.';
+        }
+        if (msg.includes('insufficient')) {
+          return `${msg}. Mint more notes for this asset or cancel an open order to release note collateral.`;
+        }
+        if (msg.includes('no opposite liquidity')) {
+          return 'No opposite liquidity available for market execution right now.';
+        }
+        return msg;
+      }
+
+      function checklistRow(label, status, detail) {
+        const cls = status === 'ok' ? 'check-ok' : status === 'warn' ? 'check-warn' : 'check-bad';
+        return `<div class="check-row"><span>${label}</span><strong class="${cls}">${detail}</strong></div>`;
+      }
+
+      async function refreshPretradeChecklist() {
+        const root = document.getElementById('pretradeChecklist');
+        if (!root) return;
+        const wallet = document.getElementById('ordWallet').value.trim();
+        const marketId = document.getElementById('ordMarketId').value.trim();
+        const orderType = document.getElementById('ordType').value;
+        const quantity = Number(document.getElementById('ordQty').value || 0);
+        const limitPrice = orderType === 'MARKET' ? null : Number(document.getElementById('ordPrice').value || 0);
+        if (!wallet || !marketId || !Number.isFinite(quantity) || quantity <= 0) {
+          root.innerHTML = checklistRow('Checklist', 'warn', 'enter wallet/market/qty');
+          return;
+        }
+        try {
+          const [buyCheck, sellCheck] = await Promise.all([
+            sdk.getPretradeChecklist({
+              wallet,
+              marketId,
+              side: 'BUY',
+              orderType,
+              quantity,
+              limitPrice
+            }),
+            sdk.getPretradeChecklist({
+              wallet,
+              marketId,
+              side: 'SELL',
+              orderType,
+              quantity,
+              limitPrice
+            })
+          ]);
+          const buyReq = buyCheck.required || {};
+          const sellReq = sellCheck.required || {};
+          const buyReqAmt = Number(buyReq.amount || 0);
+          const sellReqAmt = Number(sellReq.amount || 0);
+          const buyAvail = Number((buyCheck.availableByAsset || {})[buyReq.asset || ''] || 0);
+          const sellAvail = Number((sellCheck.availableByAsset || {})[sellReq.asset || ''] || 0);
+          const lockedBase = Number((buyCheck.lockedByAsset || {})[(sellReq.asset || '')] || 0);
+          const lockedQuote = Number((buyCheck.lockedByAsset || {})[(buyReq.asset || '')] || 0);
+          root.innerHTML =
+            checklistRow('Wallet linked', buyCheck.walletLinked ? 'ok' : 'bad', buyCheck.walletLinked ? 'yes' : 'no') +
+            checklistRow(
+              'Sync freshness',
+              buyCheck.syncFresh ? 'ok' : 'bad',
+              buyCheck.realFundsMode ? (buyCheck.syncFresh ? 'fresh' : 'stale') : 'n/a'
+            ) +
+            checklistRow(
+              'Market executable',
+              orderType === 'MARKET' && (!buyCheck.marketExecutable || !sellCheck.marketExecutable) ? 'bad' : 'ok',
+              orderType === 'MARKET' ? `buy:${buyCheck.marketExecutable ? 'yes' : 'no'} sell:${sellCheck.marketExecutable ? 'yes' : 'no'}` : 'limit order'
+            ) +
+            checklistRow(`Buy note collateral ${buyReq.asset || '-'}`, buyAvail + 1e-9 >= buyReqAmt ? 'ok' : 'bad', `${fmtDisplayNumber(buyReqAmt)} / notes ${fmtDisplayNumber(buyAvail)}`) +
+            checklistRow(`Sell note collateral ${sellReq.asset || '-'}`, sellAvail + 1e-9 >= sellReqAmt ? 'ok' : 'bad', `${fmtDisplayNumber(sellReqAmt)} / notes ${fmtDisplayNumber(sellAvail)}`) +
+            checklistRow('Locked base collateral', lockedBase > 0 ? 'warn' : 'ok', fmtDisplayNumber(lockedBase)) +
+            checklistRow('Locked quote collateral', lockedQuote > 0 ? 'warn' : 'ok', fmtDisplayNumber(lockedQuote));
+        } catch (error) {
+          root.innerHTML = checklistRow('Checklist', 'bad', formatOrderError(error));
+        }
+      }
+
+      async function signMessageWithWallet(message, wallet) {
+        const provider = window.mina;
+        if (!provider) throw new Error('No Mina wallet provider found in browser');
+        const attempts = [];
+        if (typeof provider.signMessage === 'function') {
+          try {
+            const response = await provider.signMessage({ message });
+            return {
+              method: 'signMessage',
+              publicKey: response?.publicKey || wallet,
+              signature: response?.signature || response?.signatureBase58 || response?.signedData || response,
+              raw: response
+            };
+          } catch (e) {
+            attempts.push(`signMessage: ${String(e?.message || e)}`);
+          }
+        }
+        if (typeof provider.request === 'function') {
+          const variants = [
+            { method: 'mina_signMessage', params: { message } },
+            { method: 'zeko_signMessage', params: { message } },
+            { method: 'wallet_signMessage', params: { message } }
+          ];
+          for (const variant of variants) {
+            try {
+              const response = await provider.request({ method: variant.method, params: variant.params });
+              return {
+                method: variant.method,
+                publicKey: response?.publicKey || response?.address || wallet,
+                signature: response?.signature || response?.signatureBase58 || response?.signedData || response,
+                raw: response
+              };
+            } catch (e) {
+              attempts.push(`${variant.method}: ${String(e?.message || e)}`);
+            }
+          }
+        }
+        throw new Error(`Wallet does not expose a supported signMessage API. Attempts: ${attempts.join(' | ') || 'none'}`);
+      }
+
+      function parseOverrideNoteHashes(raw) {
+        return String(raw || '')
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean);
+      }
+
+      function sanitizeOverrideNoteHashes(noteHashes, asset) {
+        const notes = Array.isArray(latestNotesPortfolio?.outstandingNotes) ? latestNotesPortfolio.outstandingNotes : [];
+        const valid = new Set(
+          notes
+            .filter((note) => String(note?.asset || '').toUpperCase() === String(asset || '').toUpperCase())
+            .map((note) => String(note.noteHash))
+        );
+        return (noteHashes || []).filter((hash) => valid.has(String(hash)));
+      }
+
+      function autoSelectFundingNotes(asset, requiredAmount) {
+        const notes = Array.isArray(latestNotesPortfolio?.outstandingNotes) ? latestNotesPortfolio.outstandingNotes : [];
+        const matches = notes
+          .filter((note) => String(note?.asset || '').toUpperCase() === String(asset || '').toUpperCase())
+          .sort((a, b) => Number(a.createdAtUnixMs || 0) - Number(b.createdAtUnixMs || 0));
+        const selected = [];
+        let remaining = Number(requiredAmount || 0);
+        for (const note of matches) {
+          if (!(remaining > 1e-9)) break;
+          selected.push(String(note.noteHash));
+          remaining -= Number(note.amount || 0);
+        }
+        if (remaining > 1e-9) {
+          throw new Error(`insufficient note collateral for ${asset}: required ${fmtDisplayNumber(requiredAmount)}`);
+        }
+        return selected;
+      }
+
+      async function createOrderAuthorization({ wallet, market, side, orderType, timeInForce, limitPrice, quantity, fundingNoteHashes, frontendId }) {
+        const nonce = `ord_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+        const expiresAtUnixMs = Date.now() + 5 * 60 * 1000;
+        const payload = stableStringify({
+          wallet,
+          marketId: market.marketId,
+          baseTokenId: market.baseTokenId,
+          quoteTokenId: market.quoteTokenId,
+          side,
+          orderType,
+          timeInForce,
+          limitPrice: orderType === 'MARKET' ? null : limitPrice,
+          quantity,
+          fundingNoteHashes,
+          visibility: document.getElementById('ordVisibility')?.value === 'private' ? 'private' : 'public',
+          frontendId: frontendId || null,
+          nonce,
+          expiresAtUnixMs
+        });
+        const signed = await signMessageWithWallet(payload, wallet);
+        return {
+          publicKey: signed.publicKey || wallet,
+          payload,
+          nonce,
+          expiresAtUnixMs,
+          signature: signed.signature,
+          method: signed.method,
+          raw: signed.raw
+        };
+      }
+
+      function updateOrderTypeUi() {
+        const orderType = document.getElementById('ordType').value;
+        const tif = document.getElementById('ordTif');
+        const price = document.getElementById('ordPrice');
+        const priceField = document.getElementById('ordPriceField');
+        if (orderType === 'MARKET') {
+          if (!tif.disabled) lastNonMarketTif = tif.value || lastNonMarketTif || 'GTC';
+          tif.value = 'IOC';
+          tif.disabled = true;
+          price.disabled = true;
+          if (priceField) priceField.style.display = 'none';
+        } else {
+          tif.disabled = false;
+          tif.value = lastNonMarketTif || 'GTC';
+          price.disabled = false;
+          if (priceField) priceField.style.display = '';
+        }
+        updateFundingHint();
+        updateVisibilityHint();
+        refreshPretradeChecklist().catch(() => {});
+      }
+
+      function updateVisibilityHint() {
+        const mode = document.getElementById('ordVisibility')?.value || 'public';
+        const hint = document.getElementById('ordVisibilityHint');
+        if (!hint) return;
+        hint.textContent =
+          mode === 'private'
+            ? 'Private dark orders use note funding and do not appear in the public book before execution.'
+            : 'Public anonymous orders show price and size in the book, but do not expose your wallet.';
+      }
+
+      function updateWalletButtonState() {
+        const btn = document.getElementById('globalConnectWalletBtn');
+        if (!btn) return;
+        if (!walletConnected) {
+          btn.textContent = 'Connect Wallet';
+          btn.disabled = false;
+          btn.title = '';
+          return;
+        }
+        const w = String(document.getElementById('ordWallet')?.value || '').trim();
+        btn.textContent = 'Connected';
+        btn.disabled = false;
+        btn.title = w || '';
+      }
+
+      async function connectWallet() {
+        const provider = window.mina;
+        if (!provider) throw new Error('No Mina wallet provider found in browser');
+        let accounts = [];
+        if (typeof provider.requestAccounts === 'function') {
+          accounts = await provider.requestAccounts();
+        } else if (typeof provider.request === 'function') {
+          const result = await provider.request({ method: 'mina_requestAccounts' });
+          accounts = Array.isArray(result) ? result : (result?.result || []);
+        } else {
+          throw new Error('Connected wallet provider does not support account requests');
+        }
+        const wallet = Array.isArray(accounts) ? accounts[0] : accounts;
+        if (!wallet || typeof wallet !== 'string') throw new Error('Wallet did not return an address');
+
+        const targets = ['ordWallet', 'activityWallet', 'chainWallet', 'noteWallet'];
+        for (const id of targets) {
+          const el = document.getElementById(id);
+          if (el) el.value = wallet;
+        }
+
+        await sdk.syncOnchainBalance({ wallet });
+        walletSyncTimes.set(wallet, Date.now());
+        walletConnected = true;
+        updateWalletButtonState();
+        updateOperatorPanelState();
+        setText('orderOut', { ok: true, connectedWallet: wallet, realFundsMode });
+        await refreshNoteAssetOptions();
+        await refreshNotesPortfolio();
+        await refreshPretradeChecklist();
+      }
+
+      async function syncWalletIfNeeded(wallet, force = false) {
+        const w = String(wallet || '').trim();
+        if (!w) throw new Error('wallet is required');
+        const last = Number(walletSyncTimes.get(w) || 0);
+        const due = force || !last || (Date.now() - last > WALLET_SYNC_COOLDOWN_MS);
+        if (!due) return;
+        try {
+          await sdk.syncOnchainBalance({ wallet: w });
+          walletSyncTimes.set(w, Date.now());
+        } catch (error) {
+          throw error;
+        }
+      }
+
+      function populateMarketSelectors(markets) {
+        knownMarkets = Array.isArray(markets) ? markets : [];
+        if (!knownMarkets.length) return;
+        const selected = knownMarkets[0];
+
+        const targets = ['bookPair', 'chartPair', 'ordPair'];
+        for (const id of targets) {
+          const el = document.getElementById(id);
+          el.innerHTML = '';
+          for (const market of knownMarkets) {
+            const opt = document.createElement('option');
+            opt.value = market.marketId;
+            opt.textContent = `${market.baseAsset}/${market.quoteAsset}`;
+            el.appendChild(opt);
+          }
+          el.value = selected.marketId;
+        }
+
+        document.getElementById('makerPair').value = selected.pair;
+        document.getElementById('ordMarketId').value = selected.marketId;
+        document.getElementById('makerMarketId').value = selected.marketId;
+        renderMarketVerify(selected);
+        updateOrderIntent(selected);
+        refreshNoteAssetOptions().catch(() => {});
+        refreshPretradeChecklist().catch(() => {});
+      }
+
+      async function cancelOpenOrder(orderId, cancelToken) {
+        if (!orderId || !cancelToken) throw new Error('cancel credentials missing');
+        const result = await sdk.cancelOrder(orderId, cancelToken);
+        if (document.getElementById('replaceOrderId').value.trim() === String(orderId)) {
+          clearReplaceOrderState();
+        }
+        setText('orderOut', result);
+        await refreshBook();
+        await refreshTrades();
+        await refreshActivity();
+        await refreshPretradeChecklist();
+      }
+
+      function renderGlobalTradeRows(trades) {
+        const root = document.getElementById('activityRows');
+        root.innerHTML = '';
+        if (!trades || trades.length === 0) {
+          const row = document.createElement('div');
+          row.className = 'activity-row';
+          row.innerHTML = `<div>-</div><div>No global trades</div><div>-</div><div>-</div><div>-</div><div>-</div><div>Submit orders to populate history.</div>`;
+          root.appendChild(row);
+          return;
+        }
+        for (const t of trades) {
+          const row = document.createElement('div');
+          row.className = 'activity-row';
+          row.innerHTML = `
+            <div class="mono">${fmtUtcTime(t.createdAtUnixMs)}</div>
+            <div>Trade</div>
+            <div class="mono">${t.pair || '-'}</div>
+            <div class="mono">-</div>
+            <div class="mono">${fmtDisplayNumber(t.price)}</div>
+            <div class="mono">${fmtDisplayNumber(t.quantity)}</div>
+            <div class="mono">${shortHash(t.buyCommitment)} / ${shortHash(t.sellCommitment)}</div>
+          `;
+          root.appendChild(row);
+        }
+      }
+
+      function renderBookRows(targetId, rows, side) {
+        const root = document.getElementById(targetId);
+        root.innerHTML = '';
+        if (!rows || rows.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'book-empty';
+          empty.textContent = 'No levels';
+          root.appendChild(empty);
+          return;
+        }
+        for (const level of rows) {
+          const row = document.createElement('div');
+          row.className = 'book-row';
+          row.innerHTML = `
+            <div class="mono ${side === 'buy' ? 'green' : 'red'}">${fmtDisplayNumber(level.price)}</div>
+            <div class="mono">${fmtDisplayNumber(level.size)}</div>
+          `;
+          root.appendChild(row);
+        }
+      }
+
+      function fmtNum(v, digits = 4) {
+        return fmtDisplayNumber(v);
+      }
+
+      function renderActivity(events, openOrders) {
+        const root = document.getElementById('activityRows');
+        root.innerHTML = '';
+        const activeOrders = Array.isArray(openOrders) ? openOrders : [];
+        if ((!events || events.length === 0) && activeOrders.length === 0) {
+          const row = document.createElement('div');
+          row.className = 'activity-row';
+          row.innerHTML = `<div>-</div><div>No activity</div><div>-</div><div>-</div><div>-</div><div>-</div><div>Submit orders to populate history.</div>`;
+          root.appendChild(row);
+          return;
+        }
+        for (const order of activeOrders) {
+          const row = document.createElement('div');
+          row.className = 'activity-row';
+          const sequencingLabel = order.sequenceNumber ? `SEQ ${order.sequenceNumber}` : 'OPEN';
+          row.innerHTML = `
+            <div class="mono">${fmtUtcTime(order.createdAtUnixMs)}</div>
+            <div>${sequencingLabel}</div>
+            <div class="mono">${order.pair || '-'}</div>
+            <div class="mono">${order.side || '-'}</div>
+            <div class="mono">${fmtNum(order.limitPrice, 4)}</div>
+            <div class="mono">${fmtNum(order.remaining, 6)}</div>
+            <div class="mono">${(order.visibility || 'public').toUpperCase()} · ${(order.timeInForce || 'GTC')} · ${order.sequencingReceiptHash ? shortHash(order.sequencingReceiptHash) : 'no-seq'} <button type="button" class="ghost replace-open-order" data-order='${JSON.stringify(order).replace(/'/g, '&apos;')}' style="width:auto;padding:3px 8px;margin-left:8px;">Edit</button><button type="button" class="ghost cancel-open-order" data-order-id="${order.id}" data-cancel-token="${order.cancelToken}" style="width:auto;padding:3px 8px;margin-left:8px;">Cancel</button></div>
+          `;
+          root.appendChild(row);
+        }
+        for (const ev of events) {
+          const row = document.createElement('div');
+          row.className = 'activity-row';
+          const d = ev.details || {};
+          const actionMap = {
+            order_submitted: 'Order',
+            trade_fill: 'Fill',
+            order_canceled: 'Cancel',
+            balance_synced_onchain: 'Sync',
+            balance_funded: 'Fund',
+            note_issued: 'Note Out',
+            note_spent_for_order: 'Note Spend',
+            note_redeemed: 'Note In',
+            note_withdrawn: 'Withdraw'
+          };
+          const action = actionMap[ev.type] || ev.type;
+          const marketOrAsset = d.pair || d.asset || '-';
+          const side = d.side || '-';
+          const price = d.price ?? d.limitPrice ?? null;
+          const qty = d.quantity ?? d.amount ?? null;
+          let note = '-';
+          if (ev.type === 'order_submitted') note = `${d.orderType || 'LIMIT'} ${d.tif || ''} ${d.sequenceNumber ? `· SEQ ${d.sequenceNumber}` : ''}`.trim();
+          else if (ev.type === 'trade_fill') note = d.tradeId ? shortHash(d.tradeId) : 'matched';
+          else if (ev.type === 'order_canceled') note = d.orderId ? shortHash(d.orderId) : 'canceled';
+          else if (ev.type === 'balance_synced_onchain') note = d.wallet ? shortHash(d.wallet) : 'synced';
+          else if (ev.type === 'note_withdrawn') note = d.recipient ? shortHash(d.recipient) : 'withdrawn';
+          else if (ev.type === 'note_issued') note = d.reason || 'issued';
+          else if (ev.type === 'note_spent_for_order') note = d.orderId ? shortHash(d.orderId) : 'consumed';
+          else if (ev.type === 'note_redeemed') note = 'redeemed';
+          else if (ev.type === 'balance_funded') note = 'manual';
+          else if (ev.type === 'settlement_batch_enqueued' || ev.type === 'settlement_batch_appended') {
+            note = [d.batchId ? `B${d.batchId}` : null, d.privateStateTransitionHash ? shortHash(d.privateStateTransitionHash) : null].filter(Boolean).join(' · ') || '-';
+          }
+          row.innerHTML = `
+            <div class="mono">${fmtUtcTime(ev.createdAtUnixMs)}</div>
+            <div>${action}</div>
+            <div class="mono">${marketOrAsset}</div>
+            <div class="mono">${side}</div>
+            <div class="mono">${price === null ? '-' : fmtNum(price, 4)}</div>
+            <div class="mono">${qty === null ? '-' : fmtNum(qty, 6)}</div>
+            <div class="mono">${note}</div>
+          `;
+          root.appendChild(row);
+        }
+        for (const btn of root.querySelectorAll('.cancel-open-order')) {
+          btn.onclick = async () => {
+            try {
+              btn.disabled = true;
+              await cancelOpenOrder(btn.dataset.orderId, btn.dataset.cancelToken);
+            } catch (e) {
+              setText('orderOut', String(e?.message || e));
+            } finally {
+              btn.disabled = false;
+            }
+          };
+        }
+        for (const btn of root.querySelectorAll('.replace-open-order')) {
+          btn.onclick = () => {
+            try {
+              const raw = btn.getAttribute('data-order') || '{}';
+              const order = JSON.parse(raw.replace(/&apos;/g, "'"));
+              loadOrderIntoEntry(order);
+            } catch (e) {
+              setText('orderOut', String(e?.message || e));
+            }
+          };
+        }
+      }
+
+      function clearReplaceOrderState() {
+        document.getElementById('replaceOrderId').value = '';
+        document.getElementById('replaceOrderToken').value = '';
+        document.getElementById('replaceOrderSide').value = '';
+        const hint = document.getElementById('replaceOrderHint');
+        if (hint) {
+          hint.style.display = 'none';
+          hint.textContent = '';
+        }
+      }
+
+      function loadOrderIntoEntry(order) {
+        if (!order || !order.id) throw new Error('open order payload is invalid');
+        const market = getMarketById(order.marketId) || knownMarkets.find((m) => m.pair === order.pair) || null;
+        if (market) {
+          document.getElementById('ordPair').value = market.marketId;
+          document.getElementById('bookPair').value = market.marketId;
+          document.getElementById('chartPair').value = market.marketId;
+          document.getElementById('ordMarketId').value = market.marketId;
+          renderMarketVerify(market);
+          updateOrderIntent(market);
+        }
+        document.getElementById('ordType').value = order.orderType || 'LIMIT';
+        document.getElementById('ordQty').value = fmtDisplayNumber(order.remaining || order.quantity || 0);
+        document.getElementById('ordPrice').value = Number(order.limitPrice || 0) > 0 ? fmtDisplayNumber(order.limitPrice) : document.getElementById('ordPrice').value;
+        document.getElementById('ordVisibility').value = (order.visibility || 'public') === 'private' ? 'private' : 'public';
+        lastNonMarketTif = order.timeInForce || 'GTC';
+        document.getElementById('replaceOrderId').value = order.id;
+        document.getElementById('replaceOrderToken').value = order.cancelToken || '';
+        document.getElementById('replaceOrderSide').value = order.side || '';
+        const hint = document.getElementById('replaceOrderHint');
+        if (hint) {
+          hint.style.display = '';
+          hint.textContent =
+            `Editing open ${order.side || '-'} ${order.orderType || 'LIMIT'} order ${shortHash(order.id)}. ` +
+            `Next ${order.side || ''} submit will replace it.`;
+        }
+        updateOrderTypeUi();
+        updateVisibilityHint();
+        refreshPretradeChecklist().catch(() => {});
+      }
+
+      function ensureTradeChart() {
+        if (chartApi) return;
+        const host = document.getElementById('tapeChart');
+        if (!host) return;
+        if (!window.LightweightCharts) {
+          host.innerHTML = '<div class="book-empty">Chart library failed to load. Hard refresh once.</div>';
+          return;
+        }
+        try {
+          chartApi = window.LightweightCharts.createChart(host, {
+            autoSize: true,
+            layout: {
+              background: { color: '#08121c' },
+              textColor: '#9db9d3'
+            },
+            grid: {
+              vertLines: { color: '#17324a' },
+              horzLines: { color: '#17324a' }
+            },
+            timeScale: {
+              timeVisible: true,
+              secondsVisible: true,
+              rightOffset: 4,
+              borderColor: '#214056'
+            },
+            rightPriceScale: {
+              borderColor: '#214056'
+            },
+            crosshair: {
+              mode: window.LightweightCharts.CrosshairMode.Normal
+            }
+          });
+          const candleOptions = {
+            upColor: '#2cd889',
+            downColor: '#ff6b7f',
+            borderVisible: false,
+            wickUpColor: '#2cd889',
+            wickDownColor: '#ff6b7f',
+            priceLineVisible: true
+          };
+          const volumeOptions = {
+            priceFormat: { type: 'volume' },
+            priceScaleId: '',
+            color: '#4ec7ff',
+            lastValueVisible: false
+          };
+          if (typeof chartApi.addCandlestickSeries === 'function') {
+            candleSeries = chartApi.addCandlestickSeries(candleOptions);
+          } else if (typeof chartApi.addSeries === 'function' && window.LightweightCharts.CandlestickSeries) {
+            candleSeries = chartApi.addSeries(window.LightweightCharts.CandlestickSeries, candleOptions);
+          } else {
+            throw new Error('candlestick series API unavailable');
+          }
+          if (typeof chartApi.addHistogramSeries === 'function') {
+            volumeSeries = chartApi.addHistogramSeries(volumeOptions);
+          } else if (typeof chartApi.addSeries === 'function' && window.LightweightCharts.HistogramSeries) {
+            volumeSeries = chartApi.addSeries(window.LightweightCharts.HistogramSeries, volumeOptions);
+          } else {
+            throw new Error('histogram series API unavailable');
+          }
+          if (volumeSeries?.priceScale) {
+            volumeSeries.priceScale().applyOptions({
+              scaleMargins: { top: 0.78, bottom: 0 }
+            });
+          }
+          host.dataset.chartStatus = 'ready';
+        } catch (error) {
+          chartApi = null;
+          candleSeries = null;
+          volumeSeries = null;
+          host.innerHTML = `<div class="book-empty">Chart init failed: ${String(error && error.message ? error.message : error)}</div>`;
+          return;
+        }
+        if (!chartResizeBound) {
+          window.addEventListener('resize', () => {
+            if (chartApi) chartApi.timeScale().fitContent();
+          });
+          chartResizeBound = true;
+        }
+      }
+
+      function drawTapeChart(candles, trades, market) {
+        const host = document.getElementById('tapeChart');
+        if (!host) return;
+        const rows = Array.isArray(candles) ? candles : [];
+        if (!rows.length) {
+          host.innerHTML = '<div class="book-empty">No public fills yet.</div>';
+          return;
+        }
+        const width = Math.max(640, Math.floor(host.clientWidth || 640));
+        const height = Math.max(320, Math.floor(host.clientHeight || 320));
+        const activeWindow = document.querySelector('#chartWindowButtons .seg-btn.active');
+        const zoomPct = Math.max(20, Math.min(100, Number(activeWindow?.dataset?.zoom || 100)));
+        const visibleCount = Math.max(12, Math.min(rows.length, Math.ceil(rows.length * (zoomPct / 100))));
+        const visibleRows = rows.slice(-visibleCount);
+        const pad = { top: 14, right: 64, bottom: 42, left: 64 };
+        const volumeHeight = 72;
+        const priceBottom = height - volumeHeight - 22;
+        const priceHeight = Math.max(120, priceBottom - pad.top);
+        const volumeTop = priceBottom + 18;
+        const usableWidth = Math.max(120, width - pad.left - pad.right);
+        const candleWidth = Math.max(4, Math.min(16, usableWidth / Math.max(1, visibleRows.length) * 0.58));
+        const highs = visibleRows.map((c) => Number(c.high || 0)).filter((n) => n > 0);
+        const lows = visibleRows.map((c) => Number(c.low || 0)).filter((n) => n > 0);
+        const maxPriceRaw = highs.length ? Math.max(...highs) : 1;
+        const minPriceRaw = lows.length ? Math.min(...lows) : 0;
+        const priceSpan = Math.max(0.000001, maxPriceRaw - minPriceRaw);
+        const maxPrice = maxPriceRaw + priceSpan * 0.08;
+        const minPrice = Math.max(0, minPriceRaw - priceSpan * 0.08);
+        const scaledSpan = Math.max(0.000001, maxPrice - minPrice);
+        const maxVolume = Math.max(1, ...visibleRows.map((c) => Number(c.volume || 0)));
+        const xForIndex = (index) => pad.left + (usableWidth / Math.max(1, visibleRows.length)) * (index + 0.5);
+        const yForPrice = (price) => pad.top + ((maxPrice - Number(price || 0)) / scaledSpan) * priceHeight;
+        const yForVolume = (volume) => volumeTop + (1 - Number(volume || 0) / maxVolume) * (volumeHeight - 10);
+        const visibleStartMs = Number(visibleRows[0]?.time || 0) * 1000;
+        const visibleEndMs = Number(visibleRows[visibleRows.length - 1]?.time || 0) * 1000 + Number(document.getElementById('chartInterval')?.value || 60) * 1000;
+        const xForTimestamp = (tsMs) => {
+          const span = Math.max(1, visibleEndMs - visibleStartMs);
+          const pct = Math.max(0, Math.min(1, (Number(tsMs || 0) - visibleStartMs) / span));
+          return pad.left + pct * usableWidth;
+        };
+
+        const grid = [];
+        const labels = [];
+        for (let i = 0; i <= 4; i += 1) {
+          const y = pad.top + (priceHeight / 4) * i;
+          const price = maxPrice - (scaledSpan / 4) * i;
+          grid.push(`<line x1="${pad.left}" y1="${y.toFixed(2)}" x2="${(width - pad.right).toFixed(2)}" y2="${y.toFixed(2)}" stroke="#17324a" stroke-width="1" />`);
+          labels.push(
+            `<text x="${(pad.left - 8).toFixed(2)}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="#8ba5bf" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">${fmtDisplayNumber(price)}</text>` +
+            `<text x="${(width - pad.right + 8).toFixed(2)}" y="${(y + 4).toFixed(2)}" fill="#8ba5bf" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">${fmtDisplayNumber(price)}</text>`
+          );
+        }
+        grid.push(`<line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${(priceBottom + 1).toFixed(2)}" stroke="#214056" stroke-width="1" />`);
+        grid.push(`<line x1="${(width - pad.right).toFixed(2)}" y1="${pad.top}" x2="${(width - pad.right).toFixed(2)}" y2="${(priceBottom + 1).toFixed(2)}" stroke="#214056" stroke-width="1" />`);
+
+        const depthBands = Array.isArray(market?.depthBands?.bands) ? market.depthBands.bands : [];
+        const mid = Number(market?.indicativeMid || 0);
+        const bandOverlays = [];
+        if (mid > 0 && depthBands.length) {
+          const orderedBands = [...depthBands].sort((a, b) => Number(b.pct || 0) - Number(a.pct || 0));
+          for (const band of orderedBands) {
+            const pct = Number(band.pct || 0);
+            if (!(pct > 0)) continue;
+            const buyTop = yForPrice(mid);
+            const buyBottom = yForPrice(mid * (1 - pct));
+            const sellTop = yForPrice(mid * (1 + pct));
+            const sellBottom = yForPrice(mid);
+            const labelY = Math.max(pad.top + 12, Math.min(priceBottom - 6, (sellTop + sellBottom) / 2));
+            bandOverlays.push(
+              `<rect x="${pad.left}" y="${sellTop.toFixed(2)}" width="${usableWidth.toFixed(2)}" height="${Math.max(0, sellBottom - sellTop).toFixed(2)}" fill="#ff5d7a" fill-opacity="${pct >= 0.05 ? '0.05' : '0.09'}" />` +
+              `<rect x="${pad.left}" y="${buyTop.toFixed(2)}" width="${usableWidth.toFixed(2)}" height="${Math.max(0, buyBottom - buyTop).toFixed(2)}" fill="#27d7a1" fill-opacity="${pct >= 0.05 ? '0.04' : '0.08'}" />` +
+              `<text x="${(pad.left + 8).toFixed(2)}" y="${labelY.toFixed(2)}" fill="#6f8ca9" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Depth ${Math.round(pct * 100)}%</text>`
+            );
+          }
+          bandOverlays.push(
+            `<line x1="${pad.left}" y1="${yForPrice(mid).toFixed(2)}" x2="${(width - pad.right).toFixed(2)}" y2="${yForPrice(mid).toFixed(2)}" stroke="#3aa7ff" stroke-width="1" stroke-dasharray="4 4" opacity="0.7" />`
+          );
+        }
+
+        const volumeBars = [];
+        const candleMarks = [];
+        const closeLine = [];
+        visibleRows.forEach((candle, index) => {
+          const x = xForIndex(index);
+          const open = Number(candle.open || 0);
+          const high = Number(candle.high || 0);
+          const low = Number(candle.low || 0);
+          const close = Number(candle.close || 0);
+          const volume = Number(candle.volume || 0);
+          const color = close >= open ? '#2cd889' : '#ff6b7f';
+          const yOpen = yForPrice(open);
+          const yClose = yForPrice(close);
+          const yHigh = yForPrice(high);
+          const yLow = yForPrice(low);
+          const bodyTop = Math.min(yOpen, yClose);
+          const bodyHeight = Math.max(1.5, Math.abs(yClose - yOpen));
+          const barTop = yForVolume(volume);
+          const barHeight = Math.max(2, volumeTop + volumeHeight - 10 - barTop);
+          volumeBars.push(
+            `<rect x="${(x - candleWidth / 2).toFixed(2)}" y="${barTop.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${barHeight.toFixed(2)}" fill="${color}" fill-opacity="0.26" rx="1.5"><title>Volume ${fmtDisplayNumber(volume)}</title></rect>`
+          );
+          candleMarks.push(
+            `<line x1="${x.toFixed(2)}" y1="${yHigh.toFixed(2)}" x2="${x.toFixed(2)}" y2="${yLow.toFixed(2)}" stroke="${color}" stroke-width="1.4" />` +
+            `<rect x="${(x - candleWidth / 2).toFixed(2)}" y="${bodyTop.toFixed(2)}" width="${candleWidth.toFixed(2)}" height="${bodyHeight.toFixed(2)}" fill="${color}" rx="1.5"><title>${new Date(Number(candle.time || 0) * 1000).toISOString()} | O ${fmtDisplayNumber(open)} H ${fmtDisplayNumber(high)} L ${fmtDisplayNumber(low)} C ${fmtDisplayNumber(close)} V ${fmtDisplayNumber(volume)}</title></rect>`
+          );
+          closeLine.push(`${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${yClose.toFixed(2)}`);
+        });
+
+        const timeLabels = [];
+        const labelCount = Math.max(2, Math.min(6, Math.floor(usableWidth / 92)));
+        const chosenLabelIdx = new Set();
+        for (let i = 0; i < labelCount; i += 1) {
+          const index = Math.min(visibleRows.length - 1, Math.round((visibleRows.length - 1) * (labelCount === 1 ? 1 : i / (labelCount - 1))));
+          if (chosenLabelIdx.has(index)) continue;
+          chosenLabelIdx.add(index);
+          const x = xForIndex(index);
+          const ts = Number(visibleRows[index].time || 0) * 1000;
+          const label = new Date(ts).toLocaleTimeString('en-US', {
+            hour12: false,
+            timeZone: 'UTC',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          timeLabels.push(`<line x1="${x.toFixed(2)}" y1="${(priceBottom + 4).toFixed(2)}" x2="${x.toFixed(2)}" y2="${(priceBottom + 10).toFixed(2)}" stroke="#35516b" stroke-width="1" />`);
+          timeLabels.push(
+            `<text x="${x.toFixed(2)}" y="${(height - 10).toFixed(2)}" text-anchor="middle" fill="#7f93aa" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">${label}Z</text>`
+          );
+        }
+        const markerTrades = (Array.isArray(trades) ? trades : [])
+          .filter((trade) => {
+            const tsMs = Number(trade.createdAtUnixMs || 0);
+            const price = Number(trade.price || 0);
+            return tsMs >= visibleStartMs && tsMs <= visibleEndMs && price > 0;
+          })
+          .slice(0, 18);
+        const tradeMarkers = markerTrades.map((trade, index) => {
+          const x = xForTimestamp(Number(trade.createdAtUnixMs || 0));
+          const y = yForPrice(Number(trade.price || 0));
+          const isLatest = index === 0;
+          const qty = fmtDisplayNumber(trade.quantity || 0);
+          return (
+            `<circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="${isLatest ? '4.5' : '3.2'}" fill="${isLatest ? '#ffd166' : '#4ec7ff'}" stroke="#08121c" stroke-width="1.3" opacity="${isLatest ? '1' : '0.88'}"><title>${new Date(Number(trade.createdAtUnixMs || 0)).toISOString()} | Price ${fmtDisplayNumber(trade.price || 0)} | Qty ${qty}</title></circle>` +
+            (isLatest
+              ? `<text x="${(x + 8).toFixed(2)}" y="${(y - 8).toFixed(2)}" fill="#ffd166" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">Last ${qty}</text>`
+              : '')
+          );
+        });
+
+        host.innerHTML = `
+          <svg viewBox="0 0 ${width} ${height}" width="100%" height="100%" preserveAspectRatio="none" aria-label="ShadowBook price chart">
+            <rect x="0" y="0" width="${width}" height="${height}" fill="#08121c"></rect>
+            ${grid.join('')}
+            ${bandOverlays.join('')}
+            <path d="${closeLine.join(' ')}" fill="none" stroke="#4ec7ff" stroke-width="1.4" opacity="0.55"></path>
+            ${volumeBars.join('')}
+            ${candleMarks.join('')}
+            ${tradeMarkers.join('')}
+            ${labels.join('')}
+            ${timeLabels.join('')}
+          </svg>
+        `;
+      }
+
+      function candlesFromTrades(trades, intervalSec, limit) {
+        const safeIntervalSec = Math.max(1, Number(intervalSec || 60));
+        const buckets = new Map();
+        for (const trade of Array.isArray(trades) ? trades : []) {
+          const tsMs = Number(trade.createdAtUnixMs || 0);
+          const price = Number(trade.price || 0);
+          const qty = Number(trade.quantity || 0);
+          if (!(tsMs > 0) || !(price > 0) || !(qty > 0)) continue;
+          const bucketSec = Math.floor(tsMs / 1000 / safeIntervalSec) * safeIntervalSec;
+          const existing = buckets.get(bucketSec);
+          if (!existing) {
+            buckets.set(bucketSec, {
+              time: bucketSec,
+              open: price,
+              high: price,
+              low: price,
+              close: price,
+              volume: qty,
+              trades: 1
+            });
+            continue;
+          }
+          existing.high = Math.max(existing.high, price);
+          existing.low = Math.min(existing.low, price);
+          existing.close = price;
+          existing.volume += qty;
+          existing.trades += 1;
+        }
+        return Array.from(buckets.values()).sort((a, b) => a.time - b.time).slice(-Math.max(10, Number(limit || 60)));
+      }
+
+      function renderChartSummary(candles, trades, market) {
+        const root = document.getElementById('chartStatusBar');
+        if (!root) return;
+        const rows = Array.isArray(candles) ? candles : [];
+        const last = rows.length ? rows[rows.length - 1] : null;
+        const highs = rows.map((c) => Number(c.high || 0)).filter((n) => n > 0);
+        const lows = rows.map((c) => Number(c.low || 0)).filter((n) => n > 0);
+        const high = highs.length ? Math.max(...highs) : null;
+        const low = lows.length ? Math.min(...lows) : null;
+        const volume = rows.reduce((sum, row) => sum + Number(row.volume || 0), 0);
+        const lastTrade = Array.isArray(trades) && trades.length ? trades[0] : null;
+        const pairLabel = market?.pair || '-';
+        const activeWindow = document.querySelector('#chartWindowButtons .seg-btn.active');
+        const windowLabel = activeWindow ? activeWindow.textContent : 'All';
+        const summary = [
+          { label: 'Market', value: pairLabel },
+          { label: 'Last', value: last ? fmtDisplayNumber(last.close) : '-' },
+          { label: 'Range', value: high !== null && low !== null ? `${fmtDisplayNumber(low)} - ${fmtDisplayNumber(high)}` : '-' },
+          { label: 'Volume', value: volume > 0 ? fmtDisplayNumber(volume) : '-' },
+          { label: 'Trades', value: String(Array.isArray(trades) ? trades.length : 0) },
+          { label: 'Window', value: windowLabel },
+          { label: 'Tape', value: 'UTC public prints after all fills', note: true },
+          { label: 'Last Print', value: lastTrade?.createdAtUnixMs ? fmtUtcTime(lastTrade.createdAtUnixMs) : 'UTC pending' }
+        ];
+        root.innerHTML = summary
+          .map((item) => `
+            <div class="chart-pill-stat${item.note ? ' note' : ''}">
+              <label>${item.label}</label>
+              <div class="value mono">${item.value}</div>
+            </div>
+          `)
+          .join('');
+      }
+
+      function setChartIntervalButtonState(intervalSec) {
+        for (const btn of Array.from(document.querySelectorAll('#chartIntervalButtons .seg-btn'))) {
+          btn.classList.toggle('active', String(btn.dataset.interval || '') === String(intervalSec || '60'));
+        }
+      }
+
+      function setChartWindowButtonState(zoomPct) {
+        for (const btn of Array.from(document.querySelectorAll('#chartWindowButtons .seg-btn'))) {
+          btn.classList.toggle('active', String(btn.dataset.zoom || '') === String(zoomPct || '100'));
+        }
+      }
+
+      function renderWithdrawHistory(events) {
+        const root = document.getElementById('withdrawHistory');
+        if (!root) return;
+        const withdrawals = Array.isArray(events) ? events : [];
+        if (!withdrawals.length) {
+          root.innerHTML = '<div class="withdraw-empty">Withdrawals will appear here after you redeem private collateral back to your wallet.</div>';
+          return;
+        }
+        root.innerHTML = withdrawals.slice(0, 5).map((ev) => {
+          const d = ev.details || {};
+          return `
+            <div class="withdraw-row">
+              <div class="mono">${fmtUtcTime(ev.createdAtUnixMs)}</div>
+              <div class="mono">${d.asset || '-'}</div>
+              <div class="mono">${fmtDisplayNumber(d.amount)}</div>
+              <div class="mono">${d.txHash ? shortHash(d.txHash) : '-'}</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      async function refreshWithdrawPanel() {
+        const wallet = document.getElementById('noteWallet')?.value?.trim();
+        const asset = document.getElementById('noteAsset')?.value?.trim();
+        const summary = document.getElementById('withdrawSummary');
+        const status = document.getElementById('withdrawStatus');
+        if (!summary || !status) return;
+        const outstanding = latestNotesPortfolio?.outstandingByAsset || {};
+        const total = Number(outstanding[String(asset || '').toUpperCase()] || 0);
+        summary.textContent = asset ? `${asset}: ${fmtDisplayNumber(total)}` : 'Select an asset';
+        if (!wallet) {
+          status.textContent = 'Enter a wallet to view withdrawals';
+          renderWithdrawHistory([]);
+          return;
+        }
+        try {
+          const activity = await sdk.getActivity(wallet, 100);
+          const withdrawals = (activity.events || []).filter((ev) => ev.type === 'note_withdrawn');
+          const latest = withdrawals[0];
+          status.textContent = latest
+            ? `${latest.details?.asset || '-'} ${fmtDisplayNumber(latest.details?.amount)} at ${fmtUtcTime(latest.createdAtUnixMs)}`
+            : 'No withdrawals yet';
+          renderWithdrawHistory(withdrawals);
+        } catch (error) {
+          status.textContent = 'Unable to load withdrawals';
+          renderWithdrawHistory([]);
+        }
+      }
+
+      async function refreshTrades() {
+        const selectedMarketId = document.getElementById('chartPair').value;
+        const selectedMarket = getMarketById(selectedMarketId);
+        const maxPoints = Math.max(10, Number(document.getElementById('chartPoints').value || 60));
+        const intervalSec = Math.max(1, Number(document.getElementById('chartInterval').value || 60));
+        const activeWindow = document.querySelector('#chartWindowButtons .seg-btn.active');
+        const zoomPct = Math.max(20, Math.min(100, Number(activeWindow?.dataset?.zoom || 100)));
+        setChartIntervalButtonState(intervalSec);
+        setChartWindowButtonState(zoomPct);
+        const candleData = await sdk.getCandles({ marketId: selectedMarketId, intervalSec, limit: maxPoints });
+        const data = await sdk.getTrades();
+        const trades = (data.trades || []).filter((t) => {
+          if (selectedMarketId && t.marketId) return t.marketId === selectedMarketId;
+          return selectedMarket ? t.pair === selectedMarket.pair : true;
+        });
+        const candles =
+          Array.isArray(candleData.candles) && candleData.candles.length
+            ? candleData.candles
+            : candlesFromTrades(trades, intervalSec, maxPoints);
+        drawTapeChart(candles, trades, selectedMarket);
+        renderChartSummary(candles, trades, selectedMarket);
+        if ((document.getElementById('activityView')?.value || 'your') === 'global') {
+          renderGlobalTradeRows(trades);
+        }
+      }
+
+      async function refreshBook() {
+        const marketId = document.getElementById('bookPair').value;
+        const levels = Math.max(1, Number(document.getElementById('bookLevels').value || 20));
+        const data = await sdk.getBook({ marketId }, levels);
+        renderBookRows('askRows', data.depth?.asks || [], 'sell');
+        renderBookRows('bidRows', data.depth?.bids || [], 'buy');
+        const bestBid = Number(data.depth?.bids?.[0]?.price || 0);
+        const bestAsk = Number(data.depth?.asks?.[0]?.price || 0);
+        const ordMarketId = document.getElementById('ordMarketId').value;
+        const orderType = document.getElementById('ordType').value;
+        if (marketId && marketId === ordMarketId && orderType === 'LIMIT') {
+          const mid = bestBid > 0 && bestAsk > 0 ? (bestBid + bestAsk) / 2 : (bestBid || bestAsk || 0);
+          if (mid > 0) document.getElementById('ordPrice').value = fmtDisplayNumber(mid);
+        }
+        const market = getMarketById(marketId);
+        if (market) {
+          market.bestBid = data.depth?.bids?.[0]?.price ?? null;
+          market.bestAsk = data.depth?.asks?.[0]?.price ?? null;
+          market.indicativeMid =
+            market.bestBid !== null && market.bestAsk !== null
+              ? (Number(market.bestBid) + Number(market.bestAsk)) / 2
+              : market.bestBid ?? market.bestAsk ?? null;
+          market.depthBands = data.depth?.depthBands || market.depthBands || null;
+          renderMarketVerify(market);
+        }
+        await refreshPretradeChecklist();
+      }
+
+      async function refreshActivity() {
+        const view = document.getElementById('activityView')?.value || 'your';
+        if (view === 'global') {
+          await refreshTrades();
+          return;
+        }
+        const wallet = document.getElementById('activityWallet').value.trim();
+        const limit = Math.max(1, Number(document.getElementById('activityLimit').value || 150));
+        const data = await sdk.getActivity(wallet, limit);
+        renderActivity(data.events || [], data.openOrders || []);
+      }
+
+      async function refreshFeeStats() {
+        const frontendId = syncFrontendIdFromUi();
+        const data = await sdk.getFrontendFees(frontendId);
+        const stats = data.frontend || {};
+        setText('feeOut', {
+          frontendId,
+          tradeCount: stats.tradeCount || 0,
+          routedVolumeQuote: fmtDisplayNumber(stats.routedVolumeQuote || 0),
+          earningsByAsset: stats.earningsByAsset || {},
+          protocolFeeBalances: data.protocolFeeBalances || {},
+          feeConfig: data.config || {}
+        });
+      }
+
+      async function refreshOperatorPanel() {
+        const [status, settlementBatches] = await Promise.all([
+          sdk.getStatus(),
+          sdk.getSettlementBatches(20)
+        ]);
+        operatorPanelAllowedWallet = status?.server?.zkapp?.operatorPanelAllowedWallet || null;
+        operatorPanelAdminKeyConfigured = Boolean(status?.server?.zkapp?.operatorPanelAdminKeyConfigured);
+        updateOperatorPanelState();
+        const latestBatch = settlementBatches?.batches?.[0] || null;
+        const pendingBatch = (settlementBatches?.batches || []).find((batch) => batch && batch.status === 'pending') || null;
+        if (!hasOperatorPanelAccess()) {
+          setText('operatorOut', {
+            serverBuildId: status?.server?.buildId || null,
+            zkappPublicKey: status?.server?.zkapp?.zkappPublicKey || null,
+            operatorPublicKey: status?.server?.zkapp?.operatorPublicKey || null,
+            operatorPanelAllowedWallet: operatorPanelAllowedWallet || null,
+            operatorPanelAdminKeyConfigured,
+            nextPendingBatchId: status?.server?.zkapp?.nextPendingBatchId || null,
+            localIntegrity: {
+              openOrderBookHash: status?.integrity?.openOrderBookHash || null,
+              noteCommitmentRootHash: status?.integrity?.noteCommitmentRootHash || null,
+              spentNullifierRootHash: status?.integrity?.spentNullifierRootHash || null,
+              sequencingReceiptRootHash: status?.integrity?.sequencingReceiptRootHash || null
+            },
+            latestBatch: latestBatch
+              ? {
+                  batchId: latestBatch.batchId,
+                  batchType: latestBatch.batchType,
+                  status: latestBatch.status,
+                  txHash: latestBatch.txHash || null
+                }
+              : null,
+            pendingBatch: pendingBatch
+              ? {
+                  batchId: pendingBatch.batchId,
+                  batchType: pendingBatch.batchType,
+                  tradeCount: pendingBatch.tradeCount || 0
+                }
+              : null,
+            message: operatorPanelAdminKeyConfigured
+              ? 'Enter the operator admin key to run manual operator actions.'
+              : 'Connect the allowed deployer wallet to sign and run manual operator actions.'
+          });
+          return;
+        }
+        const adminKey = requireOperatorPanelAdminKey();
+        const [zkappState, merkleState] = await Promise.all([
+          sdk.getOperatorZkappState(adminKey).catch((error) => ({ ok: false, error: String(error?.message || error) })),
+          sdk.getPrivateStateMerkle(adminKey).catch((error) => ({ ok: false, error: String(error?.message || error) }))
+        ]);
+        setText('operatorOut', {
+          serverBuildId: status?.server?.buildId || null,
+          zkappPublicKey: status?.server?.zkapp?.zkappPublicKey || null,
+          nextPendingBatchId: status?.server?.zkapp?.nextPendingBatchId || null,
+          localIntegrity: {
+            openOrderBookHash: status?.integrity?.openOrderBookHash || null,
+            noteCommitmentRootHash: status?.integrity?.noteCommitmentRootHash || null,
+            spentNullifierRootHash: status?.integrity?.spentNullifierRootHash || null,
+            sequencingReceiptRootHash: status?.integrity?.sequencingReceiptRootHash || null
+          },
+          latestBatch: latestBatch
+            ? {
+                batchId: latestBatch.batchId,
+                batchType: latestBatch.batchType,
+                status: latestBatch.status,
+                txHash: latestBatch.txHash || null,
+                bookRootHash: latestBatch.bookRootHash || null,
+                noteRootHash: latestBatch.noteRootHash || null,
+                nullifierRootHash: latestBatch.nullifierRootHash || null,
+                sequencingRootHash: latestBatch.sequencingRootHash || null,
+                privateStateTransitionHash: latestBatch.privateStateTransitionHash || null
+              }
+            : null,
+          pendingBatch: pendingBatch
+            ? {
+                batchId: pendingBatch.batchId,
+                batchType: pendingBatch.batchType,
+                tradeCount: pendingBatch.tradeCount || 0,
+                privateStateTransitionHash: pendingBatch.privateStateTransitionHash || null
+              }
+            : null,
+          merkleState: merkleState?.ok ? merkleState?.merkle || null : null,
+          merkleStateError: merkleState?.ok === false ? merkleState.error || 'unable to inspect private state merkle snapshot' : null,
+          zkappState: zkappState?.zkappState || null,
+          zkappStateError: zkappState?.ok === false ? zkappState.error || 'unable to load zkapp state' : null
+        });
+      }
+
+      async function inspectPrivateStateMerkle() {
+        const result = await sdk.getPrivateStateMerkle(requireOperatorPanelAdminKey());
+        setText('operatorOut', result);
+      }
+
+      async function buildPrivateStateWitness() {
+        const result = await sdk.getPrivateStateWitness(requireOperatorPanelAdminKey());
+        setText('operatorOut', result);
+      }
+
+      async function proveNextPrivateState() {
+        const result = await sdk.provePrivateState(requireOperatorPanelAdminKey());
+        setText('operatorOut', result);
+      }
+
+      async function placeOrder(side) {
+        const frontendId = syncFrontendIdFromUi();
+        const marketId = document.getElementById('ordMarketId').value.trim();
+        const market = getMarketById(marketId);
+        if (!marketId || !market) throw new Error('market not selected');
+        const wallet = document.getElementById('ordWallet').value.trim();
+        if (!wallet) throw new Error('wallet is required');
+        const orderType = document.getElementById('ordType').value;
+        const quantity = Number(document.getElementById('ordQty').value);
+        const timeInForce = document.getElementById('ordTif').value;
+        const limitPrice = Number(document.getElementById('ordPrice').value);
+        const fundingNoteRaw = document.getElementById('ordFundingNote').value.trim();
+
+        await syncWalletIfNeeded(wallet, false);
+
+        const pretrade = await sdk.getPretradeChecklist({
+          wallet,
+          marketId,
+          side,
+          orderType,
+          quantity,
+          limitPrice: orderType === 'MARKET' ? null : Number(limitPrice)
+        });
+        const required = pretrade.required || {};
+        const requiredAsset = required.asset;
+        const requiredAmount = Number(required.amount || 0);
+        const parsedOverrideHashes = fundingNoteRaw ? parseOverrideNoteHashes(fundingNoteRaw) : [];
+        const sanitizedOverrideHashes = sanitizeOverrideNoteHashes(parsedOverrideHashes, requiredAsset);
+        const fundingNoteHashes = sanitizedOverrideHashes.length
+          ? sanitizedOverrideHashes
+          : autoSelectFundingNotes(requiredAsset, requiredAmount);
+        if (parsedOverrideHashes.length && !sanitizedOverrideHashes.length) {
+          document.getElementById('ordFundingNote').value = '';
+        }
+        const orderAuthorization = await createOrderAuthorization({
+          wallet,
+          market,
+          side,
+          orderType,
+          timeInForce,
+          limitPrice: Number(limitPrice),
+          quantity,
+          fundingNoteHashes,
+          frontendId
+        });
+
+        const payload = {
+          wallet,
+          marketId,
+          pair: market?.pair || document.getElementById('makerPair').value,
+          side,
+          orderType,
+          timeInForce,
+          limitPrice: orderType === 'MARKET' ? null : Number(limitPrice),
+          quantity,
+          fundingNoteHashes,
+          visibility: document.getElementById('ordVisibility')?.value === 'private' ? 'private' : 'public',
+          orderAuthorization,
+          frontendId
+        };
+        const replaceOrderId = document.getElementById('replaceOrderId').value.trim();
+        const replaceOrderToken = document.getElementById('replaceOrderToken').value.trim();
+        const replaceOrderSide = document.getElementById('replaceOrderSide').value.trim();
+        let result;
+        try {
+          if (replaceOrderId && replaceOrderToken && replaceOrderSide === side) {
+            result = await sdk.replaceOrder(replaceOrderId, {
+              ...payload,
+              cancelToken: replaceOrderToken
+            });
+          } else {
+            result = await sdk.placeOrder(payload);
+          }
+        } catch (error) {
+          const msg = String(error || '');
+          if (msg.includes('funding note already spent') && fundingNoteRaw) {
+            await refreshNotesPortfolio();
+            document.getElementById('ordFundingNote').value = '';
+            payload.fundingNoteHashes = autoSelectFundingNotes(requiredAsset, requiredAmount);
+            payload.orderAuthorization = await createOrderAuthorization({
+              wallet,
+              market,
+              side,
+              orderType,
+              timeInForce,
+              limitPrice: Number(limitPrice),
+              quantity,
+              fundingNoteHashes: payload.fundingNoteHashes,
+              frontendId
+            });
+            result = await sdk.placeOrder(payload);
+          } else if (realFundsMode && msg.includes('on-chain balances are stale')) {
+            await syncWalletIfNeeded(wallet, true);
+            result = await sdk.placeOrder(payload);
+          } else {
+            throw error;
+          }
+        }
+        setText('orderOut', result);
+        const effectiveOrder = result.replacementOrder || result.order || null;
+        if (effectiveOrder?.id) document.getElementById('inspectOrderId').value = effectiveOrder.id;
+        if (result.cancelToken) document.getElementById('inspectToken').value = result.cancelToken;
+        clearReplaceOrderState();
+        await refreshNotesPortfolio();
+        await refreshNoteAssetOptions();
+        await refreshTrades();
+        await refreshBook();
+        await refreshActivity();
+        await refreshFeeStats();
+        await refreshPretradeChecklist();
+      }
+
+      document.getElementById('placeBuy').onclick = async () => {
+        try {
+          document.getElementById('placeBuy').disabled = true;
+          await placeOrder('BUY');
+        } catch (e) {
+          setText('orderOut', formatOrderError(e));
+        } finally {
+          document.getElementById('placeBuy').disabled = false;
+        }
+      };
+      document.getElementById('placeSell').onclick = async () => {
+        try {
+          document.getElementById('placeSell').disabled = true;
+          await placeOrder('SELL');
+        } catch (e) {
+          setText('orderOut', formatOrderError(e));
+        } finally {
+          document.getElementById('placeSell').disabled = false;
+        }
+      };
+
+      document.getElementById('refreshTrades').onclick = async () => {
+        try { await refreshTrades(); } catch (e) { setText('orderOut', String(e)); }
+      };
+      document.getElementById('refreshBookBtn').onclick = async () => {
+        try { await refreshBook(); } catch (e) { setText('askRows', String(e)); setText('bidRows', String(e)); }
+      };
+      document.getElementById('bookPair').onchange = async () => {
+        const market = getMarketById(document.getElementById('bookPair').value);
+        if (market) {
+          clearReplaceOrderState();
+          document.getElementById('ordPair').value = market.marketId;
+          document.getElementById('makerPair').value = market.pair;
+          document.getElementById('ordMarketId').value = market.marketId;
+          document.getElementById('makerMarketId').value = market.marketId;
+          renderMarketVerify(market);
+          updateOrderIntent(market);
+        }
+        try { await refreshBook(); } catch (e) { console.error(e); }
+      };
+      document.getElementById('ordPair').onchange = async () => {
+        const market = getMarketById(document.getElementById('ordPair').value);
+        if (market) {
+          clearReplaceOrderState();
+          document.getElementById('bookPair').value = market.marketId;
+          document.getElementById('chartPair').value = market.marketId;
+          document.getElementById('ordMarketId').value = market.marketId;
+          document.getElementById('makerMarketId').value = market.marketId;
+          document.getElementById('makerPair').value = market.pair;
+          renderMarketVerify(market);
+          updateOrderIntent(market);
+        }
+        try {
+          await refreshBook();
+          await refreshTrades();
+        } catch (e) {
+          console.error(e);
+        }
+      };
+      document.getElementById('chartPair').onchange = async () => {
+        try { await refreshTrades(); } catch (e) { console.error(e); }
+      };
+      document.getElementById('chartInterval').onchange = async () => {
+        try { await refreshTrades(); } catch (e) { console.error(e); }
+      };
+      for (const btn of Array.from(document.querySelectorAll('#chartIntervalButtons .seg-btn'))) {
+        btn.onclick = async () => {
+          document.getElementById('chartInterval').value = btn.dataset.interval || '60';
+          setChartIntervalButtonState(btn.dataset.interval || '60');
+          try { await refreshTrades(); } catch (e) { console.error(e); }
+        };
+      }
+      for (const btn of Array.from(document.querySelectorAll('#chartWindowButtons .seg-btn'))) {
+        btn.onclick = async () => {
+          setChartWindowButtonState(btn.dataset.zoom || '100');
+          try { await refreshTrades(); } catch (e) { console.error(e); }
+        };
+      }
+      document.getElementById('ordType').onchange = () => updateOrderTypeUi();
+      document.getElementById('ordVisibility').onchange = () => {
+        updateVisibilityHint();
+      };
+      document.getElementById('activityView').onchange = () => { refreshActivity().catch(() => {}); };
+      document.getElementById('ordWallet').oninput = () => {
+        clearReplaceOrderState();
+        refreshPretradeChecklist().catch(() => {});
+        updateOperatorPanelState();
+      };
+      document.getElementById('operatorAdminKey').oninput = () => {
+        updateOperatorPanelState();
+      };
+      document.getElementById('ordQty').oninput = () => { refreshPretradeChecklist().catch(() => {}); };
+      document.getElementById('ordPrice').oninput = () => { refreshPretradeChecklist().catch(() => {}); };
+      document.getElementById('ordTif').onchange = () => {
+        if (document.getElementById('ordType').value !== 'MARKET') {
+          lastNonMarketTif = document.getElementById('ordTif').value || lastNonMarketTif || 'GTC';
+        }
+        refreshPretradeChecklist().catch(() => {});
+      };
+      document.getElementById('noteWallet').oninput = () => {
+        refreshNoteAssetOptions().catch(() => {});
+        refreshNotesPortfolio().catch(() => {});
+        refreshWithdrawPanel().catch(() => {});
+      };
+      document.getElementById('noteAsset').onchange = () => {
+        updateSelectedNoteAssetMeta();
+        refreshWithdrawPanel().catch(() => {});
+      };
+      document.getElementById('globalConnectWalletBtn').onclick = async () => {
+        try { await connectWallet(); } catch (e) { setText('orderOut', String(e)); }
+      };
+
+      document.getElementById('inspectBtn').onclick = async () => {
+        try {
+          const id = document.getElementById('inspectOrderId').value.trim();
+          const token = document.getElementById('inspectToken').value.trim();
+          setText('inspectOut', await sdk.getOrder(id, token));
+        } catch (e) { setText('inspectOut', String(e)); }
+      };
+
+      document.getElementById('cancelBtn').onclick = async () => {
+        try {
+          const id = document.getElementById('inspectOrderId').value.trim();
+          const token = document.getElementById('inspectToken').value.trim();
+          const result = await sdk.cancelOrder(id, token);
+          setText('inspectOut', result);
+          await refreshTrades();
+          await refreshBook();
+          if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
+          await refreshPretradeChecklist();
+        } catch (e) { setText('inspectOut', String(e)); }
+      };
+
+      document.getElementById('syncBtn').onclick = async () => {
+        try {
+          const wallet = document.getElementById('chainWallet').value.trim();
+          await syncWalletContext(wallet, 'balOut');
+        } catch (e) { setText('balOut', String(e)); }
+      };
+
+      document.getElementById('balBtn').onclick = async () => {
+        try {
+          const wallet = document.getElementById('chainWallet').value.trim();
+          const result = await sdk.getBalance(wallet);
+          setText('balOut', result);
+        } catch (e) { setText('balOut', String(e)); }
+      };
+
+      document.getElementById('mintNoteBtn').onclick = async () => {
+        try {
+          const selected = document.getElementById('noteAsset').selectedOptions?.[0];
+          const tokenId = selected?.getAttribute('data-token-id') || '';
+          const txHash = document.getElementById('noteDepositTxHash').value.trim();
+          if (requireOnchainDepositTx && !txHash) throw new Error('Deposit tx hash is required for note mint in real-funds mode');
+          const result = await sdk.deposit({
+            wallet: document.getElementById('noteWallet').value.trim(),
+            asset: document.getElementById('noteAsset').value.trim(),
+            tokenId,
+            amount: Number(document.getElementById('noteAmount').value || 0),
+            txHash
+          });
+          setText('vaultOut', result);
+          if (result.note?.note) {
+            document.getElementById('noteInput').value = result.note.note;
+          }
+          if (result.verifiedDepositTx?.txHash) document.getElementById('noteDepositTxHash').value = '';
+          await refreshNoteAssetOptions();
+          await refreshNotesPortfolio();
+          await refreshPretradeChecklist();
+          if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
+        } catch (e) { setText('vaultOut', String(e)); }
+      };
+
+      document.getElementById('findDepositTxBtn').onclick = async () => {
+        try {
+          const selected = document.getElementById('noteAsset').selectedOptions?.[0];
+          const tokenId = selected?.getAttribute('data-token-id') || '';
+          const payload = {
+            wallet: document.getElementById('noteWallet').value.trim(),
+            asset: document.getElementById('noteAsset').value.trim(),
+            tokenId,
+            amount: Number(document.getElementById('noteAmount').value || 0)
+          };
+          const result = await sdk.findLatestDepositTx(payload);
+          if (result.txHash) document.getElementById('noteDepositTxHash').value = result.txHash;
+          setText('vaultOut', result);
+        } catch (e) { setText('vaultOut', String(e)); }
+      };
+
+      document.getElementById('sendDepositTxBtn').onclick = async () => {
+        try {
+          const result = await sendDepositTxWithWallet();
+          if (result.txHash) document.getElementById('noteDepositTxHash').value = result.txHash;
+          setText('vaultOut', {
+            ok: true,
+            message: result.txHash
+              ? 'Deposit tx sent from wallet. Waiting for inclusion and auto-minting note.'
+              : 'Transfer request submitted in wallet. Waiting for tx hash before auto-mint.',
+            method: result.method,
+            txHash: result.txHash || null,
+            response: result.response
+          });
+          if (result.txHash) {
+            const minted = await autoMintNoteFromLatestDeposit({ txHash: result.txHash });
+            setText('vaultOut', {
+              ok: true,
+              message: 'Deposit confirmed and privacy note minted.',
+              depositTxHash: result.txHash,
+              note: minted.note,
+              verifiedDepositTx: minted.verifiedDepositTx || null,
+              participantBalances: minted.participantBalances || null
+            });
+          }
+        } catch (e) {
+          setText('vaultOut', String(e));
+        }
+      };
+
+      document.getElementById('mintAutoNoteBtn').onclick = async () => {
+        try {
+          const selected = document.getElementById('noteAsset').selectedOptions?.[0];
+          const tokenId = selected?.getAttribute('data-token-id') || '';
+          const txHash = document.getElementById('noteDepositTxHash').value.trim();
+          if (!txHash) {
+            throw new Error(
+              'No deposit tx hash detected. Click Send Deposit Tx (Wallet) first. If wallet does not return tx hash, paste it in Advanced.'
+            );
+          }
+          const payload = {
+            wallet: document.getElementById('noteWallet').value.trim(),
+            asset: document.getElementById('noteAsset').value.trim(),
+            tokenId,
+            amount: Number(document.getElementById('noteAmount').value || 0),
+            txHash
+          };
+          const result = await sdk.depositAuto(payload);
+          setText('vaultOut', result);
+          if (result.note?.note) {
+            document.getElementById('noteInput').value = result.note.note;
+          }
+          if (result.verifiedDepositTx?.txHash) document.getElementById('noteDepositTxHash').value = result.verifiedDepositTx.txHash;
+          await refreshNoteAssetOptions();
+          await refreshNotesPortfolio();
+          await refreshPretradeChecklist();
+          if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
+        } catch (e) { setText('vaultOut', String(e)); }
+      };
+
+      document.getElementById('refreshNotesBtn').onclick = async () => {
+        try {
+          await refreshNotesPortfolio();
+        } catch (e) { setText('notesPortfolioOut', String(e)); }
+      };
+
+      document.getElementById('poolBtn').onclick = async () => {
+        try {
+          setText('vaultOut', await sdk.getVaultPool());
+        } catch (e) { setText('vaultOut', String(e)); }
+      };
+
+      function setWithdrawBusyState(isBusy) {
+        const primaryBtn = document.getElementById('withdrawNotesPrimaryBtn');
+        const advancedBtn = document.getElementById('withdrawNotesBtn');
+        if (primaryBtn) {
+          primaryBtn.disabled = Boolean(isBusy);
+          primaryBtn.textContent = isBusy ? 'Withdrawing...' : 'Withdraw Notes to Wallet';
+        }
+        if (advancedBtn) {
+          advancedBtn.disabled = Boolean(isBusy);
+          advancedBtn.textContent = isBusy ? 'Withdrawing...' : 'Withdraw Notes to Wallet';
+        }
+      }
+
+      async function runWithdrawNotesFlow() {
+        setWithdrawBusyState(true);
+        try {
+          const wallet = document.getElementById('noteWallet').value.trim();
+          const asset = document.getElementById('noteAsset').value.trim();
+          const amount = Number(document.getElementById('noteAmount').value || 0);
+          setText('vaultOut', {
+            ok: true,
+            pending: true,
+            message: `Preparing ${fmtDisplayNumber(amount)} ${asset} withdrawal to ${wallet}. Spending private notes and submitting payout transaction...`
+          });
+          const result = await sdk.withdraw({ wallet, asset, amount });
+          setText('vaultOut', result);
+          await refreshNotesPortfolio();
+          await refreshNoteAssetOptions();
+          await refreshActivity();
+          await refreshWithdrawPanel();
+        } catch (e) {
+          setText('vaultOut', String(e));
+        } finally {
+          setWithdrawBusyState(false);
+        }
+      }
+
+      const withdrawNotesBtn = document.getElementById('withdrawNotesBtn');
+      if (withdrawNotesBtn) withdrawNotesBtn.onclick = runWithdrawNotesFlow;
+
+      document.getElementById('withdrawNotesPrimaryBtn').onclick = async () => {
+        await runWithdrawNotesFlow();
+      };
+
+      document.getElementById('makerQuoteBtn').onclick = async () => {
+        try {
+          const makerKey = document.getElementById('makerKey').value.trim();
+          const result = await sdk.postMakerQuote(
+            {
+              wallet: document.getElementById('makerWallet').value,
+              marketId: document.getElementById('makerMarketId').value,
+              pair: document.getElementById('makerPair').value,
+              bidPrice: Number(document.getElementById('makerBidPx').value),
+              askPrice: Number(document.getElementById('makerAskPx').value),
+              bidSize: Number(document.getElementById('makerBidSz').value),
+              askSize: Number(document.getElementById('makerAskSz').value),
+              timeInForce: document.getElementById('makerTif').value,
+              replace: document.getElementById('makerReplace').value === 'true',
+              makerTag: 'ui-maker-quote',
+              frontendId: sdk.frontendId
+            },
+            makerKey
+          );
+          setText('makerOut', result);
+          await refreshTrades();
+          await refreshBook();
+          if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
+        } catch (e) {
+          setText('makerOut', String(e));
+        }
+      };
+
+      document.getElementById('makerCancelAllBtn').onclick = async () => {
+        try {
+          const makerKey = document.getElementById('makerKey').value.trim();
+          const result = await sdk.cancelMakerOrders(
+            {
+              wallet: document.getElementById('makerWallet').value,
+              marketId: document.getElementById('makerMarketId').value,
+              pair: document.getElementById('makerPair').value
+            },
+            makerKey
+          );
+          setText('makerOut', result);
+          await refreshTrades();
+          await refreshBook();
+          if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
+        } catch (e) {
+          setText('makerOut', String(e));
+        }
+      };
+
+      document.getElementById('refreshActivityBtn').onclick = async () => {
+        try {
+          await refreshActivity();
+        } catch (e) {
+          renderActivity([]);
+        }
+      };
+
+      document.getElementById('refreshFeeBtn').onclick = async () => {
+        try {
+          await refreshFeeStats();
+        } catch (e) {
+          setText('feeOut', String(e));
+        }
+      };
+
+      document.getElementById('refreshOperatorBtn').onclick = async () => {
+        try {
+          await refreshOperatorPanel();
+        } catch (e) {
+          setText('operatorOut', String(e));
+        }
+      };
+
+      document.getElementById('inspectMerkleBtn').onclick = async () => {
+        try {
+          await inspectPrivateStateMerkle();
+        } catch (e) {
+          setText('operatorOut', String(e));
+        }
+      };
+
+      document.getElementById('buildWitnessBtn').onclick = async () => {
+        try {
+          await buildPrivateStateWitness();
+        } catch (e) {
+          setText('operatorOut', String(e));
+        }
+      };
+
+      document.getElementById('provePrivateStateBtn').onclick = async () => {
+        try {
+          await proveNextPrivateState();
+        } catch (e) {
+          setText('operatorOut', String(e));
+        }
+      };
+
+      document.getElementById('ordFrontendId').onchange = () => syncFrontendIdFromUi();
+      document.getElementById('feeFrontendId').onchange = () => syncFrontendIdFromUi();
+
+      function activateTab(mode) {
+        const tradingActive = mode === 'trading';
+        document.getElementById('tradingPanel').classList.toggle('panel-hidden', !tradingActive);
+        document.getElementById('fundingPanel').classList.toggle('panel-hidden', tradingActive);
+        document.getElementById('tabTrading').classList.toggle('active', tradingActive);
+        document.getElementById('tabFunding').classList.toggle('active', !tradingActive);
+      }
+      document.getElementById('tabTrading').onclick = () => activateTab('trading');
+      document.getElementById('tabFunding').onclick = () => activateTab('funding');
+
+      (async () => {
+        try {
+          activateTab('trading');
+          syncFrontendIdFromUi();
+          const status = await sdk.getStatus();
+          realFundsMode = Boolean(status?.server?.realFundsMode);
+          requireOnchainDepositTx = Boolean(status?.server?.requireOnchainDepositTx);
+          vaultDepositAddress = String(status?.server?.vaultDepositAddress || '');
+          updateFundingHint();
+          updateNoteDepositHint();
+          setText(
+            'vaultOut',
+            'Privacy notes are enabled with on-chain deposit verification. Sync wallet, submit transfer to vault address, then mint with tx hash.'
+          );
+          const marketsResp = await sdk.getMarkets();
+          populateMarketSelectors(marketsResp.markets || []);
+          updateWalletButtonState();
+          updateOrderTypeUi();
+          updateFundingModeHint();
+          await refreshTrades();
+          await refreshBook();
+          await refreshActivity();
+          await refreshNotesPortfolio();
+          await refreshFeeStats();
+          await refreshOperatorPanel();
+          await refreshPretradeChecklist();
+          document.getElementById('balBtn').click();
+          setInterval(async () => {
+            try {
+              const w = document.getElementById('ordWallet')?.value?.trim();
+              if (w) await syncWalletIfNeeded(w, false);
+            } catch {}
+          }, 15000);
+        } catch (e) {
+          console.error(e);
+        }
+      })();
+    </script>
+  </body>
+</html>

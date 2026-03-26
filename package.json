@@ -1,0 +1,38 @@
+{
+  "name": "private-order-book",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "darkpool:serve": "node src/darkpool-server.js",
+    "render:start": "pnpm build:zkapp && AUTO_RUN_BACKGROUND_WORKERS=true node src/darkpool-server.js",
+    "da:relay": "node src/da-relay-server.js",
+    "start": "node src/darkpool-server.js",
+    "bot:arb": "node scripts/arb-bot.js",
+    "settlement:worker": "node scripts/settlement-worker.js",
+    "settlement:worker:onchain": "SETTLEMENT_MODE=zkapp node scripts/settlement-worker.js",
+    "settlement:worker:local": "SETTLEMENT_MODE=local node scripts/settlement-worker.js",
+    "settlement:worker:proofs": "node scripts/private-state-proof-worker.js",
+    "settlement:worker:proofs:remote": "node scripts/private-state-proof-agent.js",
+    "settlement:payout:template": "node scripts/settlement-payout-template.js",
+    "settlement:payout:auto": "node scripts/settlement-payout-executor.js",
+    "replay:demo": "node scripts/replay-demo.js",
+    "build:zkapp": "tsc -p tsconfig.zkapp.json",
+    "zkapp:preflight": "node scripts/zkapp-preflight.js",
+    "zkapp:deploy": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/deploy.js",
+    "zkapp:commit-next": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/commit-next-batch.js",
+    "zkapp:get-state": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/get-state.js",
+    "zkapp:build-private-state-witness": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/build-private-state-witness.js",
+    "zkapp:prove-private-state": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/prove-private-state-batch.js",
+    "zkapp:inspect-private-state-merkle": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/inspect-private-state-merkle.js"
+  },
+  "dependencies": {
+    "mina-fungible-token": "1.1.0",
+    "o1js": "^2.13.0",
+    "reflect-metadata": "^0.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.3"
+  }
+}
