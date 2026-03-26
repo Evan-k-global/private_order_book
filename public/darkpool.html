@@ -27,18 +27,21 @@
         background: var(--bg);
         position: relative;
       }
-      .bg-video {
+      .bg-image {
         position: fixed;
         inset: 0;
         width: 100%;
         height: 100%;
         object-fit: cover;
+        object-position: center bottom;
         z-index: 0;
+        pointer-events: none;
       }
       .bg-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(6, 9, 15, 0.58);
+        background:
+          linear-gradient(180deg, rgba(6, 9, 15, 0.54) 0%, rgba(6, 9, 15, 0.44) 36%, rgba(6, 9, 15, 0.62) 100%);
         z-index: 1;
         pointer-events: none;
       }
@@ -55,10 +58,10 @@
         margin: 0 auto;
         padding: 16px;
         display: grid;
-        grid-template-columns: minmax(360px, 430px) minmax(0, 1fr) minmax(260px, 320px);
+        grid-template-columns: minmax(360px, 410px) minmax(0, 1fr) minmax(290px, 340px);
         grid-template-areas:
-          "entry chart chart"
-          "entry activity book";
+          "entry chart book"
+          "entry activity activity";
         gap: 12px;
         align-items: start;
       }
@@ -69,18 +72,21 @@
       }
       .card { align-self: start; }
       .order-entry-card { grid-area: entry; }
-      .order-book-card { grid-area: activity; }
+      .order-book-card { grid-area: book; }
       .price-chart-card { grid-area: chart; }
-      .activity-card { grid-area: book; }
+      .activity-card { grid-area: activity; }
       .order-entry-card {
         height: 904px;
         display: grid;
         grid-template-rows: auto minmax(0, 1fr);
       }
       .price-chart-card {
-        height: 720px;
+        height: 760px;
         display: grid;
         grid-template-rows: auto minmax(0, 1fr);
+      }
+      .activity-card {
+        min-height: 296px;
       }
       .card {
         background: var(--panel);
@@ -309,13 +315,14 @@
       }
       .chart-topline {
         display: grid;
-        grid-template-columns: minmax(220px, 1.25fr) repeat(4, minmax(120px, 1fr));
+        grid-template-columns: minmax(260px, 1.4fr) repeat(4, minmax(110px, 1fr));
         gap: 10px;
         align-items: stretch;
         width: 100%;
       }
       .chart-market-header {
-        display: flex;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
         align-items: center;
         gap: 10px;
         padding: 10px 12px;
@@ -334,11 +341,15 @@
       .chart-market-copy {
         min-width: 0;
       }
-      .chart-market-copy strong {
-        display: block;
-        font-size: 16px;
-        letter-spacing: 0.01em;
+      .chart-market-select {
+        width: 100%;
+        border: 0;
+        padding: 0;
+        background: transparent;
         color: #e4f0fb;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
       }
       .chart-market-copy span {
         display: block;
@@ -404,7 +415,7 @@
       }
       .chart-mainpane {
         display: grid;
-        grid-template-rows: auto minmax(0, 1fr) auto;
+        grid-template-rows: auto minmax(0, 1fr) auto auto;
         min-height: 0;
         border: 1px solid #1f3346;
         border-radius: 10px;
@@ -419,6 +430,24 @@
         padding: 9px 12px;
         border-bottom: 1px solid #17324a;
         min-height: 44px;
+      }
+      .chart-legend-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .chart-icon-btn {
+        width: 32px;
+        height: 32px;
+        padding: 0;
+        border-radius: 8px;
+        border: 1px solid #214056;
+        background: #0d1822;
+        color: #9bc0df;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
       }
       .chart-legend-main {
         min-width: 0;
@@ -449,15 +478,20 @@
       .chart-host {
         width: 100%;
         height: 100%;
-        min-height: 520px;
+        min-height: 500px;
         background: #08121c;
         overflow: hidden;
       }
       .order-book-card .bd,
       .activity-card .bd {
-        height: 446px;
         display: grid;
         grid-template-rows: auto 1fr;
+      }
+      .order-book-card .bd {
+        height: 694px;
+      }
+      .activity-card .bd {
+        min-height: 320px;
       }
       .order-book-card .book-grid {
         height: 100%;
@@ -476,15 +510,6 @@
       }
       .activity-card .activity-body {
         height: auto;
-      }
-      .chart-toolbar {
-        display: grid;
-        grid-template-columns: minmax(180px, 1fr) auto auto 96px 116px;
-        gap: 8px;
-        align-items: center;
-        width: 100%;
-        margin-left: 0;
-        padding: 0;
       }
       .segmented {
         display: inline-flex;
@@ -506,9 +531,6 @@
         background: linear-gradient(120deg, #2a8cff, #25d0b5);
         color: #001321;
         border-color: transparent;
-      }
-      .chart-body {
-        min-height: 0;
       }
       .chart-statusbar {
         display: flex;
@@ -541,11 +563,47 @@
         line-height: 1.35;
         color: #8ba5bf;
       }
-      .chart-toolbar-row {
+      .chart-controlbar {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: auto minmax(220px, 1fr) auto;
         gap: 12px;
         align-items: center;
+        padding: 10px 12px;
+        border-top: 1px solid #17324a;
+        background: #09131b;
+      }
+      .chart-zoom-wrap {
+        display: grid;
+        gap: 5px;
+      }
+      .chart-zoom-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        color: #8da6be;
+        font-size: 11px;
+      }
+      .chart-zoom-value {
+        color: #d5e6f6;
+      }
+      .chart-zoom-slider {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        height: 5px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(33,200,192,0.7), rgba(78,199,255,0.7));
+        outline: none;
+      }
+      .chart-zoom-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 14px;
+        height: 14px;
+        border-radius: 999px;
+        background: #dff2ff;
+        border: 2px solid #2aa8ff;
       }
       .chart-footer-meta {
         display: inline-flex;
@@ -555,17 +613,10 @@
         color: #7f96ad;
         font-size: 11px;
       }
-      .chart-toolbar label {
-        margin: 0;
+      .chart-control-note {
+        color: #7f96ad;
         font-size: 11px;
-        color: #8ba5bf;
-      }
-      .chart-toolbar .field {
-        display: grid;
-        gap: 4px;
-      }
-      .chart-window .seg-btn {
-        min-width: 54px;
+        text-align: right;
       }
       .operator-panel-card {
         grid-column: 2 / 4;
@@ -817,8 +868,8 @@
           grid-template-areas:
             "entry"
             "chart"
-            "activity"
-            "book";
+            "book"
+            "activity";
         }
         .vault-strip { grid-template-columns: 1fr; }
         .funding-left-col { display: contents; }
@@ -830,10 +881,6 @@
           width: 100%;
           justify-content: flex-start;
           padding: 0;
-        }
-        .chart-toolbar {
-          width: 100%;
-          grid-template-columns: 1fr 1fr;
         }
         .chart-topline {
           grid-template-columns: 1fr 1fr;
@@ -851,6 +898,12 @@
         .chart-statusbar {
           justify-content: flex-start;
         }
+        .chart-controlbar {
+          grid-template-columns: 1fr;
+        }
+        .chart-control-note {
+          text-align: left;
+        }
         .withdraw-summary,
         .withdraw-actions {
           grid-template-columns: 1fr;
@@ -865,6 +918,12 @@
     </style>
   </head>
   <body>
+    <img
+      class="bg-image"
+      src="/assets/replace_the_people_with_crypto_Nano_Banana_2_75683.jpg"
+      alt=""
+      aria-hidden="true"
+    />
     <div class="bg-overlay" aria-hidden="true"></div>
     <div class="brandbar">
       <div class="brand">
@@ -951,7 +1010,9 @@
             <div class="chart-market-header">
               <div class="chart-pair-dot" aria-hidden="true"></div>
               <div class="chart-market-copy">
-                <strong id="chartHeroPair">tETH/tZEKO</strong>
+                <select id="chartPair" class="chart-market-select">
+                  <option value="">loading...</option>
+                </select>
                 <span id="chartHeroVenue">ShadowBook perpetual market</span>
               </div>
             </div>
@@ -972,50 +1033,6 @@
               <div id="chartHeroTime" class="value mono">-</div>
             </div>
           </div>
-          <div class="chart-toolbar-row">
-            <div class="chart-toolbar">
-              <div class="field">
-                <label>Chart Market</label>
-                <select id="chartPair">
-                  <option value="">loading...</option>
-                </select>
-              </div>
-              <div class="field">
-                <label>Interval</label>
-                <div class="segmented" id="chartIntervalButtons">
-                  <button type="button" class="seg-btn active" data-interval="60">1m</button>
-                  <button type="button" class="seg-btn" data-interval="300">5m</button>
-                  <button type="button" class="seg-btn" data-interval="900">15m</button>
-                  <button type="button" class="seg-btn" data-interval="3600">1h</button>
-                </div>
-                <select id="chartInterval" style="display:none;">
-                  <option value="60">1m</option>
-                  <option value="300">5m</option>
-                  <option value="900">15m</option>
-                  <option value="3600">1h</option>
-                </select>
-              </div>
-              <div class="field chart-window">
-                <label>Window</label>
-                <div class="segmented" id="chartWindowButtons">
-                  <button type="button" class="seg-btn active" data-zoom="100">All</button>
-                  <button type="button" class="seg-btn" data-zoom="75">Wide</button>
-                  <button type="button" class="seg-btn" data-zoom="50">Tight</button>
-                  <button type="button" class="seg-btn" data-zoom="30">Focus</button>
-                </div>
-              </div>
-              <div class="field">
-                <label>Points</label>
-                <input id="chartPoints" type="number" value="60" />
-              </div>
-              <button type="button" class="ghost" id="refreshTrades">Refresh</button>
-            </div>
-            <div class="chart-footer-meta">
-              <span id="chartFooterClock" class="mono">UTC</span>
-              <span class="mono">log</span>
-              <span class="mono">auto</span>
-            </div>
-          </div>
         </div>
         <div class="bd chart-body">
           <div class="chart-shell">
@@ -1033,10 +1050,30 @@
                   <span class="swatch"></span>
                   <span class="mono">No public fills yet.</span>
                 </div>
-                <div id="chartLegendValues" class="chart-legend-values"></div>
+                <div class="chart-legend-actions">
+                  <div id="chartLegendValues" class="chart-legend-values"></div>
+                  <button type="button" class="chart-icon-btn" id="refreshTrades" title="Refresh chart" aria-label="Refresh chart">&#10227;</button>
+                </div>
               </div>
               <div id="tapeChart" class="chart-host"></div>
               <div id="chartStatusBar" class="chart-statusbar"></div>
+              <div class="chart-controlbar">
+                <input id="chartInterval" type="hidden" value="60" />
+                <div class="segmented" id="chartIntervalButtons">
+                  <button type="button" class="seg-btn active" data-interval="60">1m</button>
+                  <button type="button" class="seg-btn" data-interval="300">5m</button>
+                  <button type="button" class="seg-btn" data-interval="900">15m</button>
+                  <button type="button" class="seg-btn" data-interval="3600">1h</button>
+                </div>
+                <div class="chart-zoom-wrap">
+                  <div class="chart-zoom-top">
+                    <span>View Range</span>
+                    <span id="chartZoomValue" class="chart-zoom-value mono">Showing full chart</span>
+                  </div>
+                  <input id="chartZoomSlider" class="chart-zoom-slider" type="range" min="25" max="100" step="5" value="100" />
+                </div>
+                <div class="chart-control-note mono">UTC public trade tape</div>
+              </div>
             </div>
           </div>
         </div>
@@ -1309,6 +1346,9 @@
       let candleSeries = null;
       let volumeSeries = null;
       let chartResizeBound = false;
+      let latestChartCandles = [];
+      let latestChartTrades = [];
+      let latestChartMarket = null;
       let lastNonMarketTif = 'GTC';
       let operatorPanelAllowedWallet = null;
       let operatorPanelAdminKeyConfigured = false;
@@ -2481,9 +2521,9 @@
         const changePct = lastPrice > 0 && firstPrice > 0 ? (change / firstPrice) * 100 : 0;
         const volume = rows.reduce((sum, row) => sum + Number(row.volume || 0), 0);
         const lastTrade = Array.isArray(trades) && trades.length ? trades[0] : null;
-        const pair = market?.pair || '-';
-        document.getElementById('chartHeroPair').textContent = pair;
-        document.getElementById('chartHeroVenue').textContent = market?.marketId ? `${market.marketId} · Zeko` : 'ShadowBook perpetual market';
+        document.getElementById('chartHeroVenue').textContent = market?.marketId
+          ? `${market.marketId} · Last print ${lastTrade?.createdAtUnixMs ? fmtUtcTime(lastTrade.createdAtUnixMs) : 'UTC pending'}`
+          : 'ShadowBook perpetual market';
         document.getElementById('chartHeroPrice').textContent = last ? fmtDisplayNumber(last.close) : '-';
         const changeNode = document.getElementById('chartHeroChange');
         if (changeNode) {
@@ -2494,9 +2534,6 @@
         }
         document.getElementById('chartHeroVolume').textContent = volume > 0 ? fmtDisplayNumber(volume) : '-';
         document.getElementById('chartHeroTime').textContent = lastTrade?.createdAtUnixMs ? fmtUtcTime(lastTrade.createdAtUnixMs) : '-';
-        document.getElementById('chartFooterClock').textContent = lastTrade?.createdAtUnixMs
-          ? `${fmtUtcTime(lastTrade.createdAtUnixMs)}`
-          : 'UTC';
       }
 
       function updateChartLegend(candles, trades, market) {
@@ -2525,6 +2562,31 @@
         ].join('');
       }
 
+      function getChartZoomPercent() {
+        const slider = document.getElementById('chartZoomSlider');
+        return Math.max(25, Math.min(100, Number(slider?.value || 100)));
+      }
+
+      function computeVisibleCandleCount(totalCount) {
+        const total = Math.max(1, Number(totalCount || 0));
+        const zoomPct = getChartZoomPercent();
+        return Math.max(12, Math.min(total, Math.ceil(total * (zoomPct / 100))));
+      }
+
+      function updateChartZoomLabel(totalCount, visibleCount) {
+        const label = document.getElementById('chartZoomValue');
+        if (!label) return;
+        const total = Math.max(0, Number(totalCount || 0));
+        const visible = Math.max(0, Number(visibleCount || 0));
+        if (!total) {
+          label.textContent = 'Showing full chart';
+          return;
+        }
+        label.textContent = visible >= total
+          ? `Showing all ${total} candles`
+          : `Showing last ${visible} of ${total} candles`;
+      }
+
       function applyChartSeries(candles, trades, market) {
         ensureTradeChart();
         if (!chartApi || !candleSeries || !volumeSeries) return false;
@@ -2546,9 +2608,7 @@
             color: close >= open ? 'rgba(33, 200, 192, 0.45)' : 'rgba(255, 95, 109, 0.45)'
           };
         }));
-        const activeWindow = document.querySelector('#chartWindowButtons .seg-btn.active');
-        const zoomPct = Math.max(20, Math.min(100, Number(activeWindow?.dataset?.zoom || 100)));
-        const visibleCount = Math.max(12, Math.min(rows.length, Math.ceil(rows.length * (zoomPct / 100))));
+        const visibleCount = computeVisibleCandleCount(rows.length);
         const from = Math.max(0, rows.length - visibleCount);
         const to = rows.length - 1;
         if (chartApi.timeScale && typeof chartApi.timeScale().setVisibleLogicalRange === 'function') {
@@ -2556,6 +2616,7 @@
         } else {
           chartApi.timeScale().fitContent();
         }
+        updateChartZoomLabel(rows.length, visibleCount);
         updateChartHero(rows, trades, market);
         updateChartLegend(rows, trades, market);
         return true;
@@ -2571,9 +2632,7 @@
         }
         const width = Math.max(640, Math.floor(host.clientWidth || 640));
         const height = Math.max(320, Math.floor(host.clientHeight || 320));
-        const activeWindow = document.querySelector('#chartWindowButtons .seg-btn.active');
-        const zoomPct = Math.max(20, Math.min(100, Number(activeWindow?.dataset?.zoom || 100)));
-        const visibleCount = Math.max(12, Math.min(rows.length, Math.ceil(rows.length * (zoomPct / 100))));
+        const visibleCount = computeVisibleCandleCount(rows.length);
         const visibleRows = rows.slice(-visibleCount);
         const pad = { top: 14, right: 64, bottom: 42, left: 64 };
         const volumeHeight = 72;
@@ -2722,6 +2781,15 @@
             ${timeLabels.join('')}
           </svg>
         `;
+        updateChartZoomLabel(rows.length, visibleCount);
+      }
+
+      function renderCurrentChart(candles, trades, market) {
+        const renderedWithLibrary = applyChartSeries(candles, trades, market);
+        if (!renderedWithLibrary) drawTapeChart(candles, trades, market);
+        updateChartHero(candles, trades, market);
+        updateChartLegend(candles, trades, market);
+        renderChartSummary(candles, trades, market);
       }
 
       function candlesFromTrades(trades, intervalSec, limit) {
@@ -2767,14 +2835,11 @@
         const volume = rows.reduce((sum, row) => sum + Number(row.volume || 0), 0);
         const lastTrade = Array.isArray(trades) && trades.length ? trades[0] : null;
         const pairLabel = market?.pair || '-';
-        const activeWindow = document.querySelector('#chartWindowButtons .seg-btn.active');
-        const windowLabel = activeWindow ? activeWindow.textContent : 'All';
         const summary = [
           { label: 'Market', value: pairLabel },
           { label: 'Range', value: high !== null && low !== null ? `${fmtDisplayNumber(low)} - ${fmtDisplayNumber(high)}` : '-' },
           { label: 'Volume', value: volume > 0 ? fmtDisplayNumber(volume) : '-' },
           { label: 'Trades', value: String(Array.isArray(trades) ? trades.length : 0) },
-          { label: 'Window', value: windowLabel },
           { label: 'Public Tape', value: 'UTC prints after all fills', note: true },
           { label: 'Last Print', value: lastTrade?.createdAtUnixMs ? fmtUtcTime(lastTrade.createdAtUnixMs) : 'UTC pending' }
         ];
@@ -2791,12 +2856,6 @@
       function setChartIntervalButtonState(intervalSec) {
         for (const btn of Array.from(document.querySelectorAll('#chartIntervalButtons .seg-btn'))) {
           btn.classList.toggle('active', String(btn.dataset.interval || '') === String(intervalSec || '60'));
-        }
-      }
-
-      function setChartWindowButtonState(zoomPct) {
-        for (const btn of Array.from(document.querySelectorAll('#chartWindowButtons .seg-btn'))) {
-          btn.classList.toggle('active', String(btn.dataset.zoom || '') === String(zoomPct || '100'));
         }
       }
 
@@ -2852,12 +2911,9 @@
       async function refreshTrades() {
         const selectedMarketId = document.getElementById('chartPair').value;
         const selectedMarket = getMarketById(selectedMarketId);
-        const maxPoints = Math.max(10, Number(document.getElementById('chartPoints').value || 60));
+        const maxPoints = 120;
         const intervalSec = Math.max(1, Number(document.getElementById('chartInterval').value || 60));
-        const activeWindow = document.querySelector('#chartWindowButtons .seg-btn.active');
-        const zoomPct = Math.max(20, Math.min(100, Number(activeWindow?.dataset?.zoom || 100)));
         setChartIntervalButtonState(intervalSec);
-        setChartWindowButtonState(zoomPct);
         const candleData = await sdk.getCandles({ marketId: selectedMarketId, intervalSec, limit: maxPoints });
         const data = await sdk.getTrades();
         const trades = (data.trades || []).filter((t) => {
@@ -2868,11 +2924,10 @@
           Array.isArray(candleData.candles) && candleData.candles.length
             ? candleData.candles
             : candlesFromTrades(trades, intervalSec, maxPoints);
-        const renderedWithLibrary = applyChartSeries(candles, trades, selectedMarket);
-        if (!renderedWithLibrary) drawTapeChart(candles, trades, selectedMarket);
-        updateChartHero(candles, trades, selectedMarket);
-        updateChartLegend(candles, trades, selectedMarket);
-        renderChartSummary(candles, trades, selectedMarket);
+        latestChartCandles = candles;
+        latestChartTrades = trades;
+        latestChartMarket = selectedMarket;
+        renderCurrentChart(candles, trades, selectedMarket);
         if ((document.getElementById('activityView')?.value || 'your') === 'global') {
           renderGlobalTradeRows(trades);
         }
@@ -3209,9 +3264,6 @@
       document.getElementById('chartPair').onchange = async () => {
         try { await refreshTrades(); } catch (e) { console.error(e); }
       };
-      document.getElementById('chartInterval').onchange = async () => {
-        try { await refreshTrades(); } catch (e) { console.error(e); }
-      };
       for (const btn of Array.from(document.querySelectorAll('#chartIntervalButtons .seg-btn'))) {
         btn.onclick = async () => {
           document.getElementById('chartInterval').value = btn.dataset.interval || '60';
@@ -3219,12 +3271,15 @@
           try { await refreshTrades(); } catch (e) { console.error(e); }
         };
       }
-      for (const btn of Array.from(document.querySelectorAll('#chartWindowButtons .seg-btn'))) {
-        btn.onclick = async () => {
-          setChartWindowButtonState(btn.dataset.zoom || '100');
-          try { await refreshTrades(); } catch (e) { console.error(e); }
-        };
-      }
+      document.getElementById('chartZoomSlider').oninput = () => {
+        updateChartZoomLabel(
+          Array.isArray(latestChartCandles) ? latestChartCandles.length : 0,
+          computeVisibleCandleCount(Array.isArray(latestChartCandles) ? latestChartCandles.length : 0)
+        );
+        if (latestChartCandles?.length) {
+          renderCurrentChart(latestChartCandles, latestChartTrades, latestChartMarket);
+        }
+      };
       document.getElementById('ordType').onchange = () => updateOrderTypeUi();
       document.getElementById('ordVisibility').onchange = () => {
         updateVisibilityHint();
