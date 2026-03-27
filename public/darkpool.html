@@ -1045,6 +1045,16 @@
         gap: 8px;
         margin-left: auto;
       }
+      .wallet-btn {
+        width: auto;
+        padding: 6px 12px;
+        border-radius: 999px;
+      }
+      .wallet-btn.connected {
+        border: 1px solid #2f6e63;
+        background: linear-gradient(120deg, rgba(42, 140, 255, 0.24), rgba(37, 208, 181, 0.26));
+        color: #d7fbff;
+      }
       .panel-hidden {
         display: none;
       }
@@ -1170,10 +1180,10 @@
       <div class="top-tabs">
         <button id="tabTrading" class="tab-btn active">Trading</button>
         <button id="tabFunding" class="tab-btn">Funding</button>
+        <button type="button" class="ghost wallet-btn" id="globalConnectWalletBtn">Connect Wallet</button>
       </div>
       <div class="header-actions">
         <span class="pill">Zeko Testnet</span>
-        <button type="button" class="ghost" id="globalConnectWalletBtn" style="width:auto;padding:6px 12px;">Connect Wallet</button>
       </div>
     </div>
     <div id="tradingPanel" class="app">
@@ -1513,6 +1523,16 @@
       </div>
 
       <div class="funding-right-col">
+        <section class="card vault-zone">
+          <div class="hd"><h2>Acquire Testnet Funds</h2></div>
+          <div class="bd stack">
+            <div class="acquire-links">
+              <a class="ghost btn-link" href="https://faucet.zeko.io/" target="_blank" rel="noreferrer">Official Faucet</a>
+              <a class="ghost btn-link" href="https://bridge.zeko.io/" target="_blank" rel="noreferrer">Official Bridge</a>
+              <a class="ghost btn-link" href="https://solis.gizmolab.io/" target="_blank" rel="noreferrer">SolisDEX</a>
+            </div>
+          </div>
+        </section>
         <section class="card vault-zone funding-sync">
           <div class="hd"><h2>On-Chain Funding</h2></div>
           <div class="bd stack">
@@ -1531,16 +1551,6 @@
             <label>Wallet + Private Collateral</label>
             <pre id="notesPortfolioOut"></pre>
             <pre id="vaultOut"></pre>
-          </div>
-        </section>
-        <section class="card vault-zone">
-          <div class="hd"><h2>Acquire Testnet Funds</h2></div>
-          <div class="bd stack">
-            <div class="acquire-links">
-              <a class="ghost btn-link" href="https://faucet.zeko.io/" target="_blank" rel="noreferrer">Official Faucet</a>
-              <a class="ghost btn-link" href="https://bridge.zeko.io/" target="_blank" rel="noreferrer">Official Bridge</a>
-              <a class="ghost btn-link" href="https://solis.gizmolab.io/" target="_blank" rel="noreferrer">SolisDEX</a>
-            </div>
           </div>
         </section>
       </div>
@@ -2376,12 +2386,14 @@
         if (!btn) return;
         if (!walletConnected) {
           btn.textContent = 'Connect Wallet';
+          btn.classList.remove('connected');
           btn.disabled = false;
           btn.title = '';
           return;
         }
         const w = String(document.getElementById('ordWallet')?.value || '').trim();
-        btn.textContent = 'Connected';
+        btn.textContent = 'Wallet Connected';
+        btn.classList.add('connected');
         btn.disabled = false;
         btn.title = w || '';
       }
@@ -2581,15 +2593,15 @@
         for (const order of activeOrders) {
           const row = document.createElement('div');
           row.className = 'activity-row';
-          const sequencingLabel = order.sequenceNumber ? `SEQ ${order.sequenceNumber}` : 'OPEN';
+          const sequencingLabel = order.sequenceNumber ? `Seq ${order.sequenceNumber}` : 'Open';
           row.innerHTML = `
             <div class="mono">${fmtUtcTime(order.createdAtUnixMs)}</div>
-            <div>${sequencingLabel}</div>
+            <div>Open Order</div>
             <div class="mono">${order.pair || '-'}</div>
             <div class="mono">${order.side || '-'}</div>
             <div class="mono">${fmtNum(order.limitPrice, 4)}</div>
             <div class="mono">${fmtNum(order.remaining, 6)}</div>
-            <div class="mono">${(order.visibility || 'public').toUpperCase()} · ${(order.timeInForce || 'GTC')} · ${order.sequencingReceiptHash ? shortHash(order.sequencingReceiptHash) : 'no-seq'} <button type="button" class="ghost replace-open-order" data-order='${JSON.stringify(order).replace(/'/g, '&apos;')}' style="width:auto;padding:3px 8px;margin-left:8px;">Edit</button><button type="button" class="ghost cancel-open-order" data-order-id="${order.id}" data-cancel-token="${order.cancelToken}" style="width:auto;padding:3px 8px;margin-left:8px;">Cancel</button></div>
+            <div class="mono">${sequencingLabel} · ${(order.visibility || 'public').toUpperCase()} · ${(order.timeInForce || 'GTC')} · ${order.sequencingReceiptHash ? shortHash(order.sequencingReceiptHash) : 'no-seq'} <button type="button" class="ghost replace-open-order" data-order='${JSON.stringify(order).replace(/'/g, '&apos;')}' style="width:auto;padding:3px 8px;margin-left:8px;">Edit</button><button type="button" class="ghost cancel-open-order" data-order-id="${order.id}" data-cancel-token="${order.cancelToken}" style="width:auto;padding:3px 8px;margin-left:8px;">Cancel</button></div>
           `;
           root.appendChild(row);
         }
