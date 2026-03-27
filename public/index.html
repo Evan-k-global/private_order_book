@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ShadowBook | Early Access</title>
+    <style>
+      :root {
+        --bg: #06090f;
+        --surface: rgba(9, 18, 33, 0.9);
+        --surface-alt: rgba(13, 24, 42, 0.92);
+        --line: #223554;
+        --ink: #e7f1fb;
+        --muted: #8ca3bb;
+        --cyan: #6bd6ff;
+        --violet: #d074ff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        font-family: "Söhne", "Inter", "IBM Plex Sans", sans-serif;
+        background: radial-gradient(circle at top, rgba(18, 32, 57, 0.65), rgba(6, 9, 15, 0.98) 58%), var(--bg);
+        position: relative;
+        overflow-x: hidden;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(4, 7, 13, 0.32), rgba(4, 7, 13, 0.76)),
+          url('/assets/replace_the_people_with_crypto_Nano_Banana_2_75683.jpg') center bottom / cover no-repeat;
+        opacity: 0.5;
+        pointer-events: none;
+      }
+      main {
+        position: relative;
+        z-index: 1;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 32px 20px;
+      }
+      .shell {
+        width: min(1180px, 100%);
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+      }
+      .hero {
+        padding: 28px;
+        display: grid;
+        gap: 18px;
+        align-content: start;
+      }
+      .hero-logo {
+        width: min(100%, 920px);
+        height: auto;
+        display: block;
+        filter: drop-shadow(0 0 24px rgba(108, 214, 255, 0.15));
+      }
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid #315072;
+        background: rgba(10, 22, 40, 0.8);
+        color: #c4ddf6;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        width: fit-content;
+      }
+      .eyebrow::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, var(--cyan), var(--violet));
+      }
+      h1 {
+        margin: 0;
+        font-size: clamp(28px, 4vw, 46px);
+        line-height: 1.02;
+        letter-spacing: -0.03em;
+      }
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.6;
+      }
+      .gate {
+        padding: 22px 0 0;
+        border-top: 1px solid #223654;
+        display: grid;
+        gap: 16px;
+        align-content: start;
+      }
+      .gate h2 {
+        margin: 0;
+        font-size: 15px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #c8def4;
+      }
+      .code-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+      }
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #88a1ba;
+      }
+      input,
+      button,
+      a.cta-link {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid #29405e;
+        min-height: 44px;
+        padding: 0 14px;
+        font: inherit;
+      }
+      input {
+        background: #0a1628;
+        color: var(--ink);
+      }
+      button,
+      a.cta-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        cursor: pointer;
+        background: linear-gradient(120deg, #2a8cff, #25d0b5);
+        color: #03111e;
+        font-weight: 700;
+      }
+      button.secondary,
+      a.cta-link.secondary {
+        background: #0a1628;
+        color: #b9d4ef;
+      }
+      .status {
+        min-height: 22px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .status.ok { color: #7ce7b9; }
+      .status.err { color: #ff8ca1; }
+      .mini {
+        font-size: 12px;
+        color: var(--muted);
+        line-height: 1.5;
+      }
+      .hero-summary {
+        max-width: 760px;
+      }
+      .access-meta {
+        display: grid;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid #223654;
+        background: var(--surface-alt);
+      }
+      .actions {
+        display: grid;
+        gap: 10px;
+        grid-template-columns: minmax(0, 220px);
+      }
+      .footer-links {
+        margin-top: 8px;
+        padding-top: 18px;
+        border-top: 1px solid #223654;
+        display: grid;
+        gap: 14px;
+      }
+      .footer-group {
+        display: grid;
+        gap: 10px;
+      }
+      .footer-group h3 {
+        margin: 0;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #88a1ba;
+      }
+      .footer-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .footer-grid.resources {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      a.cta-link.placeholder {
+        background: #0a1628;
+        color: #b9d4ef;
+        border-style: dashed;
+      }
+      .footer-note {
+        font-size: 11px;
+        color: #7f94ab;
+      }
+      @media (max-width: 920px) {
+        .actions {
+          grid-template-columns: 1fr;
+        }
+        .footer-grid,
+        .footer-grid.resources {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="shell">
+        <section class="hero">
+          <span class="eyebrow">Early Access</span>
+          <img
+            class="hero-logo"
+            src="/assets/make_a_logo_with_the_text_Shad_Nano_Banana_2_09825.jpg"
+            alt="ShadowBook"
+          />
+          <h1>Private perpetuals with fast off-chain matching and lean on-chain settlement.</h1>
+          <p class="hero-summary">
+            ShadowBook is a private perpetuals exchange on Zeko. It combines fast off-chain matching with
+            note-backed trading and lean on-chain settlement.
+          </p>
+          <section class="gate">
+            <h2>Early Access</h2>
+            <p class="mini">
+              Enter your code to unlock the market.
+            </p>
+            <div>
+              <label for="accessCode">Early Access Code</label>
+              <div class="code-row">
+                <input id="accessCode" autocomplete="one-time-code" placeholder="SB-ALPHA-..." />
+                <button id="redeemBtn" type="button">Unlock</button>
+              </div>
+            </div>
+            <div id="status" class="status"></div>
+            <div class="access-meta">
+              <div class="mini" id="accessMeta">Checking access…</div>
+              <div class="actions">
+                <a
+                  class="cta-link secondary"
+                  href="https://github.com/Evan-k-global/private_perpetuals_order_book"
+                  target="_blank"
+                  rel="noreferrer"
+                >View GitHub Repo</a>
+              </div>
+            </div>
+          </section>
+          <section class="footer-links">
+            <div class="footer-group">
+              <h3>Community</h3>
+              <div class="footer-grid">
+                <a class="cta-link placeholder" href="#" aria-disabled="true">Follow on X</a>
+                <a class="cta-link placeholder" href="#" aria-disabled="true">Join Telegram</a>
+                <a class="cta-link placeholder" href="#" aria-disabled="true">Join Discord</a>
+              </div>
+              <div class="footer-note">Add the live ShadowBook social links here when they are ready.</div>
+            </div>
+            <div class="footer-group">
+              <h3>Explore Zeko</h3>
+              <div class="footer-grid resources">
+                <a class="cta-link secondary" href="https://zeko.io/" target="_blank" rel="noreferrer">Zeko Website</a>
+                <a class="cta-link secondary" href="https://docs.zeko.io/" target="_blank" rel="noreferrer">Zeko Docs</a>
+              </div>
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const statusEl = document.getElementById('status');
+      const metaEl = document.getElementById('accessMeta');
+      const codeEl = document.getElementById('accessCode');
+      const redeemBtn = document.getElementById('redeemBtn');
+      function setStatus(message, kind) {
+        statusEl.textContent = message || '';
+        statusEl.className = 'status' + (kind ? ' ' + kind : '');
+      }
+
+      function updateAuthorizedView(authorized, detail) {
+        redeemBtn.disabled = authorized;
+        codeEl.disabled = authorized;
+        if (authorized) {
+          setStatus('Access granted. Redirecting to the market…', 'ok');
+          metaEl.textContent = detail || 'This browser is authorized for repeated access.';
+          window.setTimeout(() => {
+            window.location.assign('/darkpool');
+          }, 250);
+        }
+      }
+
+      async function refreshStatus() {
+        const res = await fetch('/api/early-access/status');
+        const json = await res.json();
+        if (!json.ok) throw new Error(json.error || 'failed to check access');
+        if (!json.gateEnabled) {
+          updateAuthorizedView(true, 'Early access gate is currently disabled on this deployment.');
+          return;
+        }
+        if (json.authorized) {
+          updateAuthorizedView(true, `Authorized for IP ${json.ip || 'unknown'}. Used codes: ${json.usedCodeCount}/${json.configuredCodeCount}.`);
+          return;
+        }
+        metaEl.textContent = `Access is gated on this deployment. IP: ${json.ip || 'unknown'}.`;
+        setStatus('Enter your early access code to continue.', '');
+      }
+
+      async function redeem() {
+        const code = String(codeEl.value || '').trim();
+        if (!code) {
+          setStatus('Enter an early access code first.', 'err');
+          codeEl.focus();
+          return;
+        }
+        redeemBtn.disabled = true;
+        setStatus('Unlocking access…', '');
+        try {
+          const res = await fetch('/api/early-access/redeem', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ code })
+          });
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error || 'failed to redeem code');
+          updateAuthorizedView(true, `Access granted for IP ${json.ip || 'unknown'}. Remaining codes: ${json.remainingCodes}.`);
+        } catch (error) {
+          setStatus(error instanceof Error ? error.message : 'Failed to redeem code', 'err');
+        } finally {
+          redeemBtn.disabled = false;
+        }
+      }
+
+      redeemBtn.addEventListener('click', redeem);
+      codeEl.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') redeem();
+      });
+
+      refreshStatus().catch((error) => {
+        setStatus(error instanceof Error ? error.message : 'Failed to check access', 'err');
+      });
+    </script>
+  </body>
+</html>

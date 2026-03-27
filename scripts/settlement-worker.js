@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const API_BASE = (process.env.DARKPOOL_API || 'http://127.0.0.1:8791').replace(/\/$/, '');
+const INTERNAL_SERVICE_SECRET = String(process.env.INTERNAL_SERVICE_SECRET || '').trim();
 const MODE = String(process.env.SETTLEMENT_MODE || 'zkapp').toLowerCase(); // zkapp | local(testing only)
 const INTERVAL_MS = Number.parseInt(process.env.SETTLEMENT_INTERVAL_MS || '6000', 10);
 const REQUIRE_PAYOUT_PROOFS = String(process.env.SETTLEMENT_REQUIRE_PAYOUT_PROOFS || 'true').toLowerCase() === 'true';
@@ -34,7 +35,11 @@ function cachedProofPath(batchId) {
 async function request(pathname, options = {}) {
   const res = await fetch(`${API_BASE}${pathname}`, {
     method: options.method || 'GET',
-    headers: { 'content-type': 'application/json', ...(options.headers || {}) },
+    headers: {
+      'content-type': 'application/json',
+      ...(INTERNAL_SERVICE_SECRET ? { 'x-internal-service-key': INTERNAL_SERVICE_SECRET } : {}),
+      ...(options.headers || {})
+    },
     body: options.body ? JSON.stringify(options.body) : undefined
   });
   const json = await res.json();

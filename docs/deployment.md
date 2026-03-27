@@ -41,6 +41,7 @@ Plus your existing chain / app secrets:
 - `ORDER_RECEIPT_SECRET`
 - `MAKER_API_KEY`
 - `OPERATOR_PANEL_ADMIN_KEY`
+- `EARLY_ACCESS_GATE_ENABLED` and `EARLY_ACCESS_CODES` if you want the landing-page invite gate enabled
 - any DA relay envs you actually use
 
 ### Recommended setup
@@ -56,6 +57,30 @@ Plus your existing chain / app secrets:
 - embedded settlement loop
 
 This is the simplest deployment shape for the demo.
+
+## Optional Early Access Gate
+
+If you want a code-gated landing page in front of the app, set:
+
+```env
+EARLY_ACCESS_GATE_ENABLED=true
+EARLY_ACCESS_CODES=CODE1,CODE2,CODE3
+EARLY_ACCESS_COOKIE_SECRET=<strong-random-secret>
+```
+
+Behavior:
+
+- `/` stays public and shows the landing page
+- `/darkpool`, `/partner`, and `/api/darkpool/*` require access
+- each code is one-time use
+- the first successful redemption allowlists the caller IP
+- the browser also receives a signed cookie so repeat access is smoother on real networks
+
+Important note:
+
+- IP-based allowlists are simple and useful for demos, but they are not perfect under shared networks, NAT, or rotating client IPs
+- the signed browser cookie is there to soften that, but this is still a lightweight demo gate, not a full auth system
+- to turn the gate off later, set `EARLY_ACCESS_GATE_ENABLED=false`; the stored codes can remain in env without affecting access
 
 ## Lean vs Advanced Contracts
 

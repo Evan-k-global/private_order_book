@@ -114,6 +114,19 @@ const FRONTEND_FEE_SHARE_BPS = Number.parseFloat(process.env.FRONTEND_FEE_SHARE_
 const MARKET_ORDER_SLIPPAGE_BPS = Number.parseFloat(process.env.MARKET_ORDER_SLIPPAGE_BPS || '100');
 const GTC_ORDER_EXPIRY_MS = Number.parseInt(process.env.GTC_ORDER_EXPIRY_MS || '0', 10);
 const ORDER_RECEIPT_SECRET = process.env.ORDER_RECEIPT_SECRET || 'shadowbook-receipt-secret';
+const INTERNAL_SERVICE_SECRET = String(process.env.INTERNAL_SERVICE_SECRET || ORDER_RECEIPT_SECRET || 'shadowbook-internal-service').trim();
+const EARLY_ACCESS_COOKIE_NAME = String(process.env.EARLY_ACCESS_COOKIE_NAME || 'shadowbook_access').trim() || 'shadowbook_access';
+const EARLY_ACCESS_COOKIE_SECRET = String(process.env.EARLY_ACCESS_COOKIE_SECRET || ORDER_RECEIPT_SECRET || 'shadowbook-access-secret');
+const EARLY_ACCESS_CODES = Array.from(
+  new Set(
+    String(process.env.EARLY_ACCESS_CODES || '')
+      .split(/[\s,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean)
+  )
+);
+const EARLY_ACCESS_GATE_ENABLED =
+  String(process.env.EARLY_ACCESS_GATE_ENABLED || 'false').toLowerCase() === 'true';
 const AUTO_SETTLEMENT = String(process.env.AUTO_SETTLEMENT || 'false').toLowerCase() === 'true';
 const AUTO_SETTLEMENT_INTERVAL_MS = Number.parseInt(process.env.AUTO_SETTLEMENT_INTERVAL_MS || '5000', 10);
 const ENABLE_LOCAL_SETTLEMENT = String(process.env.ENABLE_LOCAL_SETTLEMENT || 'false').toLowerCase() === 'true';
@@ -157,9 +170,11 @@ let nextSettlementBatchId = 1;
 let settlementBatchesPath = null;
 let engineStatePath = null;
 let auditLogPath = null;
+let earlyAccessStatePath = null;
 let auditHeadHash = 'genesis';
 let auditWriteChain = Promise.resolve();
 let engineStateWriteChain = Promise.resolve();
+let earlyAccessWriteChain = Promise.resolve();
 let fungibleTokenCompilePromise = null;
 const auditTrail = [];
 let auditGapDetected = false;
@@ -170,6 +185,10 @@ let lastAnchoredBookHash = null;
 let nextOrderSequenceNumber = 1;
 const usedDepositTxHashes = new Set();
 const usedSettlementPayoutTxHashes = new Set();
+const earlyAccessState = {
+  allowedIps: {},
+  usedCodes: {}
+};
 const startedAtUnixMs = now();
 const engineMetrics = {
   orderAcceptedCount: 0,
@@ -190,6 +209,81 @@ function now() {
 
 function sha256Hex(value) {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function normalizeIpAddress(rawIp) {
+  const value = String(rawIp || '').trim();
+  if (!value) return '';
+  if (value.startsWith('::ffff:')) return value.slice('::ffff:'.length);
+  return value;
+}
+
+function getRequestIp(req) {
+  const forwarded = typeof req.headers['x-forwarded-for'] === 'string' ? req.headers['x-forwarded-for'] : '';
+  const candidate = forwarded.split(',')[0]?.trim() || req.socket?.remoteAddress || '';
+  return normalizeIpAddress(candidate);
+}
+
+function parseCookies(req) {
+  const raw = String(req.headers.cookie || '');
+  const cookies = {};
+  for (const part of raw.split(';')) {
+    const [name, ...rest] = part.split('=');
+    const key = String(name || '').trim();
+    if (!key) continue;
+    cookies[key] = decodeURIComponent(rest.join('=').trim());
+  }
+  return cookies;
+}
+
+function makeEarlyAccessCodeHash(code) {
+  return sha256Hex(`shadowbook-early-access:${String(code || '').trim()}`);
+}
+
+function signEarlyAccessCookie(ip) {
+  const payload = `${normalizeIpAddress(ip)}|${EARLY_ACCESS_COOKIE_SECRET}`;
+  const signature = sha256Hex(payload);
+  return `${normalizeIpAddress(ip)}.${signature}`;
+}
+
+function verifyEarlyAccessCookie(cookieValue, ip) {
+  const token = String(cookieValue || '').trim();
+  if (!token || !token.includes('.')) return false;
+  const [tokenIp, signature] = token.split('.', 2);
+  const expected = signEarlyAccessCookie(tokenIp);
+  if (expected !== `${tokenIp}.${signature}`) return false;
+  return normalizeIpAddress(tokenIp) === normalizeIpAddress(ip);
+}
+
+function buildEarlyAccessCookieHeader(ip) {
+  return `${EARLY_ACCESS_COOKIE_NAME}=${encodeURIComponent(signEarlyAccessCookie(ip))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=15552000`;
+}
+
+function getEarlyAccessCodeInventory() {
+  const map = new Map();
+  for (const code of EARLY_ACCESS_CODES) {
+    map.set(makeEarlyAccessCodeHash(code), code);
+  }
+  return map;
+}
+
+function isEarlyAccessAllowed(req) {
+  if (!EARLY_ACCESS_GATE_ENABLED) return true;
+  const internalKey = String(req.headers['x-internal-service-key'] || '').trim();
+  if (INTERNAL_SERVICE_SECRET && internalKey === INTERNAL_SERVICE_SECRET) return true;
+  const ip = getRequestIp(req);
+  const cookies = parseCookies(req);
+  if (ip && earlyAccessState.allowedIps[ip]) return true;
+  if (verifyEarlyAccessCookie(cookies[EARLY_ACCESS_COOKIE_NAME], ip)) return true;
+  return false;
+}
+
+function isProtectedAppPath(pathname) {
+  return (
+    pathname === '/darkpool' ||
+    pathname === '/partner' ||
+    pathname.startsWith('/api/darkpool/')
+  );
 }
 
 function makeMarketId(baseTokenId, quoteTokenId) {
@@ -2123,6 +2217,78 @@ async function loadEngineState() {
   }
 }
 
+async function persistEarlyAccessState() {
+  if (!earlyAccessStatePath || !EARLY_ACCESS_GATE_ENABLED) return;
+  await mkdir(path.dirname(earlyAccessStatePath), { recursive: true });
+  await writeFile(
+    earlyAccessStatePath,
+    JSON.stringify(
+      {
+        version: 1,
+        savedAtUnixMs: now(),
+        allowedIps: earlyAccessState.allowedIps,
+        usedCodes: earlyAccessState.usedCodes
+      },
+      null,
+      2
+    ),
+    'utf8'
+  );
+}
+
+function queueEarlyAccessPersist() {
+  earlyAccessWriteChain = earlyAccessWriteChain.then(() => persistEarlyAccessState()).catch(() => {});
+}
+
+async function loadEarlyAccessState() {
+  if (!earlyAccessStatePath || !EARLY_ACCESS_GATE_ENABLED) return;
+  try {
+    const raw = await readFile(earlyAccessStatePath, 'utf8');
+    const parsed = JSON.parse(raw);
+    earlyAccessState.allowedIps = parsed && typeof parsed.allowedIps === 'object' && parsed.allowedIps ? parsed.allowedIps : {};
+    earlyAccessState.usedCodes = parsed && typeof parsed.usedCodes === 'object' && parsed.usedCodes ? parsed.usedCodes : {};
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return;
+    throw error;
+  }
+}
+
+function redeemEarlyAccessCode(code, ip) {
+  const trimmedCode = String(code || '').trim();
+  const normalizedIp = normalizeIpAddress(ip);
+  if (!EARLY_ACCESS_GATE_ENABLED) {
+    return { ok: true, authorized: true, ip: normalizedIp, alreadyAuthorized: true, gateEnabled: false };
+  }
+  if (!normalizedIp) throw new Error('unable to determine client ip');
+  if (!trimmedCode) throw new Error('early access code is required');
+  const inventory = getEarlyAccessCodeInventory();
+  const codeHash = makeEarlyAccessCodeHash(trimmedCode);
+  if (!inventory.has(codeHash)) throw new Error('invalid early access code');
+  if (earlyAccessState.usedCodes[codeHash]) throw new Error('early access code already used');
+
+  const usedAtUnixMs = now();
+  earlyAccessState.usedCodes[codeHash] = {
+    codeHash,
+    usedAtUnixMs,
+    firstIp: normalizedIp
+  };
+  earlyAccessState.allowedIps[normalizedIp] = {
+    ip: normalizedIp,
+    grantedAtUnixMs: usedAtUnixMs,
+    source: 'invite-code',
+    codeHash
+  };
+  queueEarlyAccessPersist();
+  return {
+    ok: true,
+    authorized: true,
+    gateEnabled: true,
+    ip: normalizedIp,
+    codeUsed: true,
+    remainingCodes: Math.max(0, inventory.size - Object.keys(earlyAccessState.usedCodes).length)
+  };
+}
+
 async function maybePublishBookSnapshotToDa(batch) {
   if (!DA_ENDPOINT) return null;
   try {
@@ -3760,6 +3926,8 @@ function bootstrapMarkets() {
 
 async function main() {
   bootstrapMarkets();
+  const landingPagePath = path.resolve(projectRoot, 'public', 'index.html');
+  const landingPreviewPagePath = path.resolve(projectRoot, 'public', 'landing-preview.html');
   const pagePath = path.resolve(projectRoot, 'public', 'darkpool.html');
   const partnerPagePath = path.resolve(projectRoot, 'public', 'partner-frontend.html');
   const assetsRoot = path.resolve(projectRoot, 'public', 'assets');
@@ -3767,10 +3935,12 @@ async function main() {
   settlementBatchesPath = path.resolve(projectRoot, 'data', 'settlement-batches.json');
   engineStatePath = path.resolve(projectRoot, 'data', 'engine-state.json');
   auditLogPath = path.resolve(projectRoot, 'data', 'fairness-audit.jsonl');
+  earlyAccessStatePath = path.resolve(projectRoot, 'data', 'early-access-state.json');
   await mkdir(path.dirname(auditLogPath), { recursive: true });
   await loadAuditHeadFromFile();
   await loadSettlementBatches();
   await loadEngineState();
+  await loadEarlyAccessState();
   if (RESET_OPEN_ORDERS_ON_BOOT) {
     orders.clear();
     books.clear();
@@ -3881,7 +4051,58 @@ async function main() {
         return;
       }
 
-      if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/darkpool')) {
+      if (req.method === 'GET' && url.pathname === '/') {
+        const html = await readFile(landingPagePath, 'utf8');
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.end(html);
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/landing-preview') {
+        const html = await readFile(landingPreviewPagePath, 'utf8');
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.end(html);
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/early-access/status') {
+        const ip = getRequestIp(req);
+        writeJson(res, 200, {
+          ok: true,
+          gateEnabled: EARLY_ACCESS_GATE_ENABLED,
+          authorized: isEarlyAccessAllowed(req),
+          ip,
+          configuredCodeCount: EARLY_ACCESS_CODES.length,
+          usedCodeCount: Object.keys(earlyAccessState.usedCodes).length
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/early-access/redeem') {
+        const body = await readJsonBody(req);
+        const result = redeemEarlyAccessCode(body?.code, getRequestIp(req));
+        res.setHeader('Set-Cookie', buildEarlyAccessCookieHeader(getRequestIp(req)));
+        writeJson(res, 200, result);
+        return;
+      }
+
+      if (isProtectedAppPath(url.pathname) && !isEarlyAccessAllowed(req)) {
+        if (req.method === 'GET' && (url.pathname === '/darkpool' || url.pathname === '/partner')) {
+          res.statusCode = 302;
+          res.setHeader('Location', '/');
+          res.end();
+          return;
+        }
+        writeJson(res, 403, {
+          error: 'early access required',
+          gateEnabled: EARLY_ACCESS_GATE_ENABLED
+        });
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/darkpool') {
         const html = await readFile(pagePath, 'utf8');
         res.statusCode = 200;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -5087,7 +5308,8 @@ async function main() {
     const localApiBase = `http://127.0.0.1:${port}`;
     if (AUTO_RUN_PROOF_WORKER) {
       startManagedBackgroundProcess('proof-worker', 'node scripts/private-state-proof-worker.js', {
-        DARKPOOL_API: localApiBase
+        DARKPOOL_API: localApiBase,
+        INTERNAL_SERVICE_SECRET
       });
     }
     if (AUTO_RUN_SETTLEMENT_WORKER) {
@@ -5097,6 +5319,7 @@ async function main() {
           : process.env.NODE_OPTIONS || '';
       startManagedBackgroundProcess('settlement-worker', 'node scripts/settlement-worker.js', {
         DARKPOOL_API: localApiBase,
+        INTERNAL_SERVICE_SECRET,
         ...(settlementNodeOptions ? { NODE_OPTIONS: settlementNodeOptions } : {})
       });
     }

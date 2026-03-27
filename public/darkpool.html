@@ -8,20 +8,25 @@
     <style>
       :root {
         --bg: #06090f;
-        --panel: #0c131c;
-        --panel-alt: #101a26;
-        --line: #1f2d3d;
+        --panel: #091221;
+        --panel-alt: #0d182a;
+        --line: #223554;
         --ink: #d9e7f6;
         --muted: #7f93aa;
         --green: #2cd889;
         --red: #ff6b7f;
         --cyan: #4ec7ff;
         --amber: #f2c572;
+        --brand-surface: rgba(9, 18, 33, 0.92);
+        --shell-max: 1580px;
+        --shell-gutter: 16px;
+        --header-offset: 104px;
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
         min-height: 100vh;
+        padding-top: var(--header-offset);
         color: var(--ink);
         font-family: "Söhne", "Inter", "IBM Plex Sans", sans-serif;
         background: var(--bg);
@@ -54,7 +59,7 @@
         z-index: 2;
       }
       .app {
-        max-width: 1580px;
+        max-width: var(--shell-max);
         margin: 0 auto;
         padding: 16px;
         display: grid;
@@ -120,6 +125,11 @@
         display: grid;
         grid-template-rows: auto minmax(0, 1fr);
         min-width: 0;
+      }
+      .order-book-card {
+        height: 760px;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
       }
       .activity-card {
         min-height: 296px;
@@ -571,7 +581,8 @@
         flex: 0 0 auto;
       }
       .order-book-card .bd {
-        height: 694px;
+        height: 100%;
+        min-height: 0;
       }
       .activity-card .bd {
         min-height: 320px;
@@ -838,17 +849,17 @@
         line-height: 1;
       }
       .vault-zone {
-        background: #0e1a19;
-        border: 1px solid #2f5551;
+        background: var(--panel);
+        border: 1px solid var(--line);
       }
       .vault-zone .hd {
-        border-bottom: 1px solid #2f5551;
+        border-bottom: 1px solid var(--line);
       }
       .vault-zone .hd h2 {
-        color: #9fe0d3;
+        color: #a7bdd6;
       }
       .vault-strip {
-        max-width: 1580px;
+        max-width: var(--shell-max);
         margin: 10px auto 20px;
         padding: 0 16px;
         display: grid;
@@ -905,7 +916,7 @@
         color: #8ca6c2;
       }
       .section-head {
-        max-width: 1580px;
+        max-width: var(--shell-max);
         margin: 12px auto 6px;
         padding: 0 16px;
       }
@@ -926,8 +937,8 @@
         width: auto;
         padding: 8px 14px;
         border-radius: 999px;
-        border: 1px solid #2b4156;
-        background: #0b1420;
+        border: 1px solid #2d4665;
+        background: #0a1628;
         color: #a7c4df;
         font-size: 12px;
         letter-spacing: 0.08em;
@@ -939,26 +950,24 @@
         border-color: #2f5f87;
       }
       .brandbar {
-        width: 100%;
-        margin: 0;
-        padding: 10px 16px 8px;
+        width: calc(100% - (var(--shell-gutter) * 2));
+        max-width: var(--shell-max);
+        margin: 0 auto;
+        padding: 8px 12px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
+        gap: 10px;
         position: fixed;
         top: 0;
-        left: 0;
+        left: 50%;
+        transform: translateX(-50%);
         z-index: 20;
-        background: rgba(6, 9, 15, 0.72);
+        background: var(--brand-surface);
         backdrop-filter: blur(6px);
-        border-bottom: 1px solid #1f2d3d;
-      }
-      .app {
-        margin-top: 72px;
-      }
-      .vault-strip {
-        margin-top: 84px;
+        border: 1px solid #2b4261;
+        border-top: 0;
+        border-radius: 0 0 14px 14px;
       }
       .brand {
         display: flex;
@@ -966,51 +975,15 @@
         gap: 10px;
         flex-shrink: 0;
       }
+      .brand-logo {
+        display: block;
+        width: clamp(143px, 18vw, 273px);
+        max-width: 100%;
+        height: auto;
+        filter: drop-shadow(0 0 18px rgba(78, 199, 255, 0.12));
+      }
       .brandbar > .pill {
         margin-left: auto;
-      }
-      .logo-mark {
-        width: 28px;
-        height: 28px;
-        border-radius: 8px;
-        border: 1px solid #2d4760;
-        background: #102337;
-        position: relative;
-        overflow: hidden;
-      }
-      .logo-mark::before,
-      .logo-mark::after {
-        content: "";
-        position: absolute;
-        border-radius: 999px;
-      }
-      .logo-mark::before {
-        width: 22px;
-        height: 22px;
-        top: -10px;
-        left: -6px;
-        background: radial-gradient(circle, rgba(78, 199, 255, 0.85) 0%, rgba(78, 199, 255, 0) 75%);
-      }
-      .logo-mark::after {
-        width: 18px;
-        height: 18px;
-        right: -7px;
-        bottom: -7px;
-        background: radial-gradient(circle, rgba(37, 208, 181, 0.75) 0%, rgba(37, 208, 181, 0) 75%);
-      }
-      .brand h1 {
-        margin: 0;
-        font-size: 15px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        color: #d3e9ff;
-      }
-      .brand p {
-        margin: 0;
-        font-size: 11px;
-        color: #7f9bb5;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
       }
       .panel-hidden {
         display: none;
@@ -1060,6 +1033,9 @@
             "chart"
             "book"
             "activity";
+        }
+        .order-book-card {
+          height: auto;
         }
         .vault-strip { grid-template-columns: 1fr; }
         .funding-left-col { display: contents; }
@@ -1125,11 +1101,11 @@
     <div class="bg-overlay" aria-hidden="true"></div>
     <div class="brandbar">
       <div class="brand">
-        <div class="logo-mark" aria-hidden="true"></div>
-        <div>
-          <h1>ShadowBook</h1>
-          <p>private perpetuals on zeko</p>
-        </div>
+        <img
+          class="brand-logo"
+          src="/assets/now_make_two_variations_same_l_Nano_Banana_2_60031.png"
+          alt="ShadowBook"
+        />
       </div>
       <div class="top-tabs">
         <button id="tabTrading" class="tab-btn active">Trading</button>
@@ -1568,6 +1544,13 @@
 
       function getOperatorAdminKey() {
         return String(document.getElementById('operatorAdminKey')?.value || '').trim();
+      }
+
+      function syncHeaderOffset() {
+        const header = document.querySelector('.brandbar');
+        if (!header) return;
+        const offset = Math.ceil(header.getBoundingClientRect().height) + 12;
+        document.documentElement.style.setProperty('--header-offset', `${offset}px`);
       }
 
       function shouldRenderOperatorPanel() {
@@ -3777,6 +3760,9 @@
 
       (async () => {
         try {
+          syncHeaderOffset();
+          window.addEventListener('resize', syncHeaderOffset);
+          requestAnimationFrame(syncHeaderOffset);
           activateTab('trading');
           syncFrontendIdFromUi();
           const status = await sdk.getStatus();
