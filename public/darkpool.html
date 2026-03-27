@@ -1180,7 +1180,7 @@
                 <select id="chartPair" class="chart-market-select">
                   <option value="">loading...</option>
                 </select>
-                <span id="chartHeroVenue">ShadowBook perpetual market</span>
+                <span id="chartHeroVenue">ShadowBook market</span>
               </div>
             </div>
             <div class="chart-top-stat">
@@ -2690,7 +2690,7 @@
         const lastTrade = Array.isArray(trades) && trades.length ? trades[0] : null;
         document.getElementById('chartHeroVenue').textContent = market?.marketId
           ? `${market.marketId} · Last print ${lastTrade?.createdAtUnixMs ? fmtUtcTime(lastTrade.createdAtUnixMs) : 'UTC pending'}`
-          : 'ShadowBook perpetual market';
+          : 'ShadowBook market';
         document.getElementById('chartHeroPrice').textContent = last ? fmtDisplayNumber(last.close) : '-';
         const changeNode = document.getElementById('chartHeroChange');
         if (changeNode) {
