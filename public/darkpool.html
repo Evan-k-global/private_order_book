@@ -76,14 +76,50 @@
       .price-chart-card { grid-area: chart; }
       .activity-card { grid-area: activity; }
       .order-entry-card {
-        height: 904px;
+        height: auto;
         display: grid;
-        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-rows: auto auto;
+      }
+      .order-entry-card .hd {
+        padding: 9px 12px;
+      }
+      .order-entry-card .bd {
+        padding: 9px 10px;
+        gap: 4px;
+        display: grid;
+        grid-auto-rows: max-content;
+        align-content: start;
+        height: 100%;
+        min-height: 0;
+        overflow: auto;
+      }
+      .order-entry-card label {
+        margin-bottom: 3px;
+      }
+      .order-entry-card input,
+      .order-entry-card select,
+      .order-entry-card button,
+      .order-entry-card textarea {
+        padding: 6px 9px;
+      }
+      .order-entry-card .grid2,
+      .order-entry-card .grid3,
+      .order-entry-card .order-primary-grid {
+        gap: 6px;
+      }
+      .order-entry-card .sub {
+        line-height: 1.35;
+      }
+      .order-entry-card .checklist,
+      .order-entry-card .market-verify,
+      .order-entry-card pre {
+        margin-top: 2px;
       }
       .price-chart-card {
         height: 760px;
         display: grid;
         grid-template-rows: auto minmax(0, 1fr);
+        min-width: 0;
       }
       .activity-card {
         min-height: 296px;
@@ -205,6 +241,24 @@
         background: #0a121a;
         color: #9bc0df;
       }
+      a.btn-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        padding: 0 12px;
+        border-radius: 10px;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 12px;
+        line-height: 1;
+        letter-spacing: 0.01em;
+      }
+      a.ghost.btn-link {
+        border: 1px solid #2b3d50;
+        background: #0a121a;
+        color: #9bc0df;
+      }
       button.sell { background: linear-gradient(120deg, #2a8cff, #25d0b5); color: #001321; }
       button.buy { background: linear-gradient(120deg, #2a8cff, #25d0b5); color: #001321; }
       .market-item {
@@ -306,11 +360,13 @@
         display: grid;
         grid-template-rows: minmax(0, 1fr);
         min-height: 0;
+        min-width: 0;
         overflow: hidden;
       }
       .chart-body {
         min-height: 0;
         height: 100%;
+        min-width: 0;
         overflow: hidden;
       }
       .price-chart-card .hd {
@@ -320,10 +376,11 @@
       }
       .chart-topline {
         display: grid;
-        grid-template-columns: minmax(260px, 1.4fr) repeat(4, minmax(110px, 1fr));
+        grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr));
         gap: 10px;
         align-items: stretch;
         width: 100%;
+        min-width: 0;
       }
       .chart-market-header {
         display: grid;
@@ -352,7 +409,7 @@
         padding: 0;
         background: transparent;
         color: #e4f0fb;
-        font-size: 22px;
+        font-size: 18px;
         font-weight: 700;
         letter-spacing: 0.01em;
       }
@@ -369,6 +426,7 @@
         border-radius: 10px;
         background: linear-gradient(180deg, #101821, #0b1219);
         padding: 10px 12px;
+        min-width: 0;
       }
       .chart-top-stat label {
         margin: 0 0 4px 0;
@@ -381,16 +439,12 @@
         font-size: 15px;
         color: #dbe9f8;
       }
-      .order-entry-card .bd {
-        height: auto;
-        min-height: 0;
-        overflow: auto;
-      }
       .chart-shell {
         display: grid;
         grid-template-columns: 42px minmax(0, 1fr);
         gap: 10px;
         min-height: 0;
+        min-width: 0;
         height: 100%;
       }
       .chart-toolrail {
@@ -423,6 +477,7 @@
         display: grid;
         grid-template-rows: auto minmax(340px, 1fr) auto auto;
         min-height: 0;
+        min-width: 0;
         height: 100%;
         border: 1px solid #1f3346;
         border-radius: 10px;
@@ -437,6 +492,7 @@
         padding: 9px 12px;
         border-bottom: 1px solid #17324a;
         min-height: 44px;
+        min-width: 0;
         position: relative;
         z-index: 1;
       }
@@ -444,6 +500,7 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
+        min-width: 0;
       }
       .chart-icon-btn {
         width: 32px;
@@ -481,6 +538,7 @@
         justify-content: flex-end;
         font-size: 12px;
         color: #8ca5be;
+        min-width: 0;
       }
       .chart-legend-values .up { color: #2cd889; }
       .chart-legend-values .down { color: #ff6b7f; }
@@ -488,6 +546,7 @@
         width: 100%;
         height: 100%;
         min-height: 340px;
+        min-width: 0;
         background: #08121c;
         overflow: hidden;
         position: relative;
@@ -497,6 +556,19 @@
       .activity-card .bd {
         display: grid;
         grid-template-rows: auto 1fr;
+      }
+      .order-book-card .hd {
+        flex-wrap: nowrap;
+      }
+      .order-book-card .hd h2 {
+        white-space: nowrap;
+        flex: 0 1 auto;
+      }
+      .order-book-card .hd #refreshBookBtn {
+        width: auto;
+        min-width: 84px;
+        padding: 6px 10px;
+        flex: 0 0 auto;
       }
       .order-book-card .bd {
         height: 694px;
@@ -551,6 +623,7 @@
         padding: 10px 12px;
         border-top: 1px solid #17324a;
         background: #0a1218;
+        min-width: 0;
         position: relative;
         z-index: 1;
       }
@@ -578,12 +651,13 @@
       }
       .chart-controlbar {
         display: grid;
-        grid-template-columns: auto minmax(220px, 1fr) auto;
+        grid-template-columns: auto minmax(140px, 1fr) auto;
         gap: 12px;
         align-items: center;
         padding: 10px 12px;
         border-top: 1px solid #17324a;
         background: #09131b;
+        min-width: 0;
         position: relative;
         z-index: 1;
       }
@@ -627,11 +701,27 @@
         justify-content: flex-end;
         color: #7f96ad;
         font-size: 11px;
+        min-width: 0;
       }
       .chart-control-note {
         color: #7f96ad;
         font-size: 11px;
         text-align: right;
+        min-width: 0;
+      }
+      @media (max-width: 1280px) {
+        .chart-topline {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .chart-legend {
+          grid-template-columns: 1fr;
+        }
+        .chart-controlbar {
+          grid-template-columns: 1fr;
+        }
+        .chart-control-note {
+          text-align: left;
+        }
       }
       .operator-panel-card {
         grid-column: 2 / 4;
@@ -696,10 +786,56 @@
       .hd-tools {
         display: inline-flex;
         align-items: center;
+        gap: 4px;
+        flex-wrap: nowrap;
+        white-space: nowrap;
+      }
+      .hd-tools select,
+      .hd-tools input {
+        width: auto;
+        min-width: 0;
+      }
+      .hd-tools .compact-select {
+        min-width: 122px;
+      }
+      .hd-tools .compact-input {
+        min-width: 48px;
+      }
+      .hd-tools .compact-wallet {
+        min-width: 148px;
+      }
+      .activity-toolbar-label {
+        font-size: 11px;
+        color: #8ba5bf;
+        margin-right: -2px;
+      }
+      .activity-auto-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        border: 1px solid #244059;
+        border-radius: 999px;
+        padding: 4px 7px;
+        background: #0b1420;
+        color: #9bc0df;
+        font-size: 11px;
+      }
+      .activity-auto-toggle input {
+        width: 14px;
+        height: 14px;
+        margin: 0;
+        accent-color: #2ec8ff;
+      }
+      .order-primary-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 8px;
       }
-      .hd-tools select {
-        min-width: 170px;
+      .trade-action-row button {
+        padding: 0 10px;
+        height: 32px;
+        min-height: 32px;
+        line-height: 1;
       }
       .vault-zone {
         background: #0e1a19;
@@ -721,13 +857,42 @@
       }
       .funding-left-col {
         display: grid;
+        grid-template-rows: auto auto;
         gap: 12px;
         align-content: start;
       }
-      .funding-sync,
-      .funding-guide,
+      .funding-right-col {
+        display: grid;
+        grid-template-rows: auto;
+        gap: 12px;
+        align-content: start;
+      }
+      .funding-guide {
+        align-self: start;
+      }
+      .funding-sync {
+        align-self: start;
+      }
       .funding-notes {
         align-self: start;
+      }
+      .acquire-links {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .acquire-links .btn-link {
+        min-width: 0;
+        width: 100%;
+        justify-content: center;
+      }
+      .meta-label {
+        display: block;
+        margin-top: 2px;
+        margin-bottom: 4px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        color: #8ca6c2;
       }
       .section-head {
         max-width: 1580px;
@@ -888,6 +1053,7 @@
         }
         .vault-strip { grid-template-columns: 1fr; }
         .funding-left-col { display: contents; }
+        .funding-right-col { display: contents; }
         .brandbar {
           flex-wrap: wrap;
           justify-content: flex-start;
@@ -899,6 +1065,13 @@
         }
         .chart-topline {
           grid-template-columns: 1fr 1fr;
+        }
+        .order-primary-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+        .hd-tools {
+          flex-wrap: wrap;
+          white-space: normal;
         }
         .chart-shell {
           grid-template-columns: 1fr;
@@ -957,7 +1130,7 @@
     </div>
     <div id="tradingPanel" class="app">
       <section class="card order-entry-card">
-        <div class="hd"><h1>ShadowBook Private Order Entry</h1><span class="pill">App-Layer Privacy</span></div>
+        <div class="hd"><h1>ShadowBook Private Order Entry</h1></div>
         <div class="bd stack">
           <div class="grid3">
             <div>
@@ -979,24 +1152,12 @@
           <input id="replaceOrderId" type="hidden" />
           <input id="replaceOrderToken" type="hidden" />
           <input id="replaceOrderSide" type="hidden" />
-          <div id="ordIntent" class="sub mono"></div>
+          <input id="ordFrontendId" type="hidden" value="shadowbook.web" />
           <div id="replaceOrderHint" class="hint-box" style="display:none;"></div>
-          <div id="ordFundingHint" class="hint-box"></div>
-          <div id="pretradeChecklist" class="checklist"></div>
-          <div class="grid3">
+          <div class="order-primary-grid">
             <div><label>Time In Force</label><select id="ordTif"><option>GTC</option><option>IOC</option></select></div>
             <div id="ordPriceField"><label>Limit Price</label><input id="ordPrice" type="number" value="63980" /></div>
             <div><label>Quantity</label><input id="ordQty" type="number" step="0.001" value="0.08" /></div>
-          </div>
-          <div class="grid2">
-            <div>
-              <label>Specific Note Hashes (Optional Override)</label>
-              <input id="ordFundingNote" placeholder="leave blank to auto-aggregate all matching notes" />
-            </div>
-            <div>
-              <label>Frontend ID</label>
-              <input id="ordFrontendId" value="shadowbook.web" />
-            </div>
           </div>
           <div class="grid2">
             <div>
@@ -1006,14 +1167,19 @@
                 <option value="private">Private Dark</option>
               </select>
             </div>
-            <div id="ordVisibilityHint" class="hint-box"></div>
+            <div>
+              <label>Specific Note Hashes (Optional)</label>
+              <input id="ordFundingNote" placeholder="Paste note hashes only to force a specific note set." />
+            </div>
           </div>
-          <div id="ordFundingModeHint" class="hint-box"></div>
-          <div class="grid2">
+          <div class="grid2 trade-action-row">
             <button type="button" class="buy" id="placeBuy">Buy</button>
             <button type="button" class="sell" id="placeSell">Sell</button>
           </div>
+          <div id="ordFundingModeHint" class="sub"></div>
+          <div id="pretradeChecklist" class="checklist"></div>
           <div id="marketVerify" class="market-verify mono"></div>
+          <label class="meta-label">Order Metadata</label>
           <pre id="orderOut"></pre>
         </div>
       </section>
@@ -1126,39 +1292,22 @@
         <div class="hd">
           <h2>Activity</h2>
           <div class="hd-tools">
-            <select id="activityView">
+            <select id="activityView" class="compact-select">
               <option value="your">Your Activity</option>
               <option value="global">Global History</option>
             </select>
+            <span class="activity-toolbar-label">Wallet</span>
+            <input id="activityWallet" class="compact-wallet" value="B62qdemo_wallet_alpha" />
+            <span class="activity-toolbar-label">Rows</span>
+            <input id="activityLimit" class="compact-input" type="number" value="150" />
             <button type="button" class="ghost" id="refreshActivityBtn">Refresh</button>
+            <label class="activity-auto-toggle" for="activityAuto">
+              <input id="activityAuto" type="checkbox" />
+              <span>Auto</span>
+            </label>
           </div>
         </div>
         <div class="bd stack">
-          <div class="grid3">
-            <div>
-              <label>Wallet</label>
-              <input id="activityWallet" value="B62qdemo_wallet_alpha" />
-            </div>
-            <div>
-              <label>Rows</label>
-              <input id="activityLimit" type="number" value="150" />
-            </div>
-            <div>
-              <label>Auto Refresh</label>
-              <select id="activityAuto"><option value="off">off</option><option value="on">on</option></select>
-            </div>
-          </div>
-          <div class="grid2">
-            <div>
-              <label>Fee View Frontend</label>
-              <input id="feeFrontendId" value="shadowbook.web" />
-            </div>
-            <div>
-              <label>&nbsp;</label>
-              <button type="button" class="ghost" id="refreshFeeBtn">Refresh Fee Stats</button>
-            </div>
-          </div>
-          <pre id="feeOut"></pre>
           <div class="activity-table">
             <div class="activity-head">
               <div>Time</div>
@@ -1233,11 +1382,13 @@
             <input id="operatorAdminKey" type="password" placeholder="Enter admin key to enable manual operator actions" />
           </div>
           <div class="grid2">
+            <button type="button" class="ghost" id="refreshFeeBtn">Refresh Fee Stats</button>
             <button type="button" class="ghost" id="refreshOperatorBtn">Refresh Operator</button>
             <button type="button" class="ghost" id="inspectMerkleBtn">Inspect Merkle State</button>
             <button type="button" class="ghost" id="buildWitnessBtn">Build Witness</button>
             <button type="button" class="ghost" id="provePrivateStateBtn">Prove Next Batch</button>
           </div>
+          <pre id="feeOut"></pre>
           <pre id="operatorOut"></pre>
         </div>
       </section>
@@ -1245,98 +1396,103 @@
 
     <div id="fundingPanel" class="vault-strip panel-hidden">
       <div class="funding-left-col">
-        <section class="card vault-zone funding-sync">
-          <div class="hd"><h2>On-Chain Funding</h2></div>
-          <div class="bd stack">
-            <div class="footnote">
-              Real-funds-only mode: fund your wallet on Zeko testnet, then sync balances into ShadowBook.
-              Limit order collateral is locked at placement and unlocked on fill, cancel, or expiry.
-            </div>
-            <div><label>Wallet</label><input id="chainWallet" value="B62qdemo_wallet_alpha" /></div>
-            <div class="grid2">
-              <button id="syncBtn" class="txn">Sync On-Chain Balance</button>
-              <button class="ghost" id="balBtn">Refresh Balance</button>
-            </div>
-            <pre id="balOut"></pre>
-          </div>
-        </section>
-
         <section class="card vault-zone funding-guide">
           <div class="hd"><h2>Funding Guide</h2></div>
           <div class="bd stack">
             <div class="footnote mono">
-              1) Acquire testnet tETH/tZEKO/tMINA in wallet.
-              2) Connect wallet in Trading tab (or paste wallet above).
-              3) Click Sync On-Chain Balance.
-              4) Send on-chain token transfer to the vault deposit address (wallet signs tx).
-              5) Mint note using the signed deposit tx hash, then paste note into order entry.
-              6) Place orders.
+              1) Connect Wallet.
+              2) Acquire testnet tETH/tZEKO/tMINA in wallet.
+              3) Mint and Redeem privacy notes in Funding UI.
+              4) Place orders in Trading UI.
             </div>
+          </div>
+        </section>
+        <section class="card vault-zone funding-notes">
+          <div class="hd"><h2>Privacy Notes</h2></div>
+          <div class="bd stack">
+            <div class="footnote">
+              Convert an on-chain vault deposit into private collateral. Trading uses your available notes automatically unless you override with specific note hashes.
+            </div>
+            <div class="grid3">
+              <div><label>Asset</label><select id="noteAsset"></select></div>
+              <div><label>Amount</label><input id="noteAmount" type="number" value="1" /></div>
+              <div><label>Wallet</label><input id="noteWallet" value="B62qdemo_wallet_alpha" /></div>
+            </div>
+            <div id="noteAssetMeta" class="market-verify mono"></div>
+            <div class="footnote">
+              Step 1: Click <span class="mono">Deposit Funds &amp; Mint Notes</span> and approve in wallet.<br />
+              Step 2: Your private collateral appears below and is auto-used by trading.<br />
+              Fallback mint controls remain in <span class="mono">Advanced</span>.
+            </div>
+            <div class="grid2">
+              <button class="txn" id="sendDepositTxBtn">Deposit Funds &amp; Mint Notes</button>
+              <button class="ghost" id="withdrawNotesPrimaryBtn">Redeem Notes &amp; Withdraw</button>
+            </div>
+            <div class="withdraw-card">
+              <div class="withdraw-summary">
+                <div>
+                  <label>Withdrawable Note Balance</label>
+                  <div id="withdrawSummary" class="value mono">Loading...</div>
+                </div>
+                <div>
+                  <label>Recent Withdrawals</label>
+                  <div id="withdrawStatus" class="value mono">No withdrawals yet</div>
+                </div>
+              </div>
+              <div id="withdrawHistory" class="withdraw-history">
+                <div class="withdraw-empty">Withdrawals will appear here after you redeem private collateral back to your wallet.</div>
+              </div>
+            </div>
+            <details id="noteAdvanced" class="stack">
+              <summary class="footnote mono">Advanced</summary>
+              <div>
+                <label>Signed Deposit Tx Hash (Manual)</label>
+                <input id="noteDepositTxHash" placeholder="5J..." />
+              </div>
+              <div>
+                <button class="ghost" id="poolBtn">Note Pool Status</button>
+              </div>
+              <div class="grid2">
+                <button class="ghost" id="findDepositTxBtn">Find Deposit Tx Helper</button>
+                <button class="txn" id="mintNoteBtn">Mint Note From Tx Hash (Manual)</button>
+              </div>
+              <div class="footnote">Withdraw is available directly above in the main note controls.</div>
+            </details>
+            <div id="noteDepositHint" class="hint-box mono"></div>
           </div>
         </section>
       </div>
 
-      <section class="card vault-zone funding-notes">
-        <div class="hd"><h2>Privacy Notes</h2></div>
-        <div class="bd stack">
-          <div class="footnote">
-            What this does: convert a real on-chain vault deposit into private collateral. Trading uses your available notes automatically unless you override with specific note hashes.
-          </div>
-          <div class="grid3">
-            <div><label>Asset</label><select id="noteAsset"></select></div>
-            <div><label>Amount</label><input id="noteAmount" type="number" value="1" /></div>
-            <div><label>Wallet</label><input id="noteWallet" value="B62qdemo_wallet_alpha" /></div>
-          </div>
-          <div id="noteAssetMeta" class="market-verify mono"></div>
-          <div class="withdraw-card">
-            <div class="withdraw-summary">
-              <div>
-                <label>Withdrawable Note Balance</label>
-                <div id="withdrawSummary" class="value mono">Loading...</div>
-              </div>
-              <div>
-                <label>Recent Withdrawals</label>
-                <div id="withdrawStatus" class="value mono">No withdrawals yet</div>
-              </div>
+      <div class="funding-right-col">
+        <section class="card vault-zone funding-sync">
+          <div class="hd"><h2>On-Chain Funding</h2></div>
+          <div class="bd stack">
+            <div class="footnote">
+              Fund your wallet on Zeko testnet, then sync balances into ShadowBook.
             </div>
-            <div class="withdraw-actions">
-              <button class="ghost" id="withdrawNotesPrimaryBtn">Withdraw Notes to Wallet</button>
-              <button class="ghost" id="poolBtn">Note Pool Status</button>
-            </div>
-            <div id="withdrawHistory" class="withdraw-history">
-              <div class="withdraw-empty">Withdrawals will appear here after you redeem private collateral back to your wallet.</div>
-            </div>
-          </div>
-          <div class="footnote">
-            Step 1: Click <span class="mono">Send Deposit Tx (Wallet)</span> and approve in wallet.<br />
-            Step 2: Click <span class="mono">Mint Note (Auto)</span>.<br />
-            Step 3: Your private collateral appears below and is auto-used by trading.
-          </div>
-          <div class="grid2">
-            <button class="txn" id="sendDepositTxBtn">Send Deposit Tx (Wallet)</button>
-            <button class="txn" id="mintAutoNoteBtn">Mint Note (Auto Find Deposit)</button>
-          </div>
-          <details id="noteAdvanced" class="stack">
-            <summary class="footnote mono">Advanced / Agent Controls</summary>
-            <div>
-              <label>Signed Deposit Tx Hash (Manual)</label>
-              <input id="noteDepositTxHash" placeholder="5J..." />
-            </div>
+            <div><label>Wallet</label><input id="chainWallet" value="B62qdemo_wallet_alpha" /></div>
             <div class="grid2">
-              <button class="ghost" id="findDepositTxBtn">Find Deposit Tx (Agent/CLI Helper)</button>
-              <button class="txn" id="mintNoteBtn">Mint Note From Tx Hash (Manual)</button>
+              <button id="syncBtn" class="txn">Sync On-Chain Balance</button>
+              <button class="ghost" id="refreshNotesBtn">Refresh Wallet + Notes</button>
             </div>
-            <div class="footnote">Withdraw is available directly above in the main note controls.</div>
-          </details>
-          <div id="noteDepositHint" class="hint-box mono"></div>
-          <button class="ghost" id="refreshNotesBtn">Refresh My Notes</button>
-          <label>Latest Minted Note</label>
-          <textarea id="noteInput" placeholder="zkv_..."></textarea>
-          <label>Wallet + Private Collateral</label>
-          <pre id="notesPortfolioOut"></pre>
-          <pre id="vaultOut"></pre>
-        </div>
-      </section>
+            <label>Latest Minted Note</label>
+            <textarea id="noteInput" placeholder="zkv_..."></textarea>
+            <label>Wallet + Private Collateral</label>
+            <pre id="notesPortfolioOut"></pre>
+            <pre id="vaultOut"></pre>
+          </div>
+        </section>
+        <section class="card vault-zone">
+          <div class="hd"><h2>Acquire Testnet Funds</h2></div>
+          <div class="bd stack">
+            <div class="acquire-links">
+              <a class="ghost btn-link" href="https://faucet.zeko.io/" target="_blank" rel="noreferrer">Official Faucet</a>
+              <a class="ghost btn-link" href="https://bridge.zeko.io/" target="_blank" rel="noreferrer">Official Bridge</a>
+              <a class="ghost btn-link" href="https://solis.gizmolab.io/" target="_blank" rel="noreferrer">SolisDEX</a>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
 
     <script src="/sdk/shadowbook-sdk.js"></script>
@@ -1372,11 +1528,9 @@
 
       function syncFrontendIdFromUi() {
         const orderFrontend = document.getElementById('ordFrontendId')?.value?.trim();
-        const feeFrontend = document.getElementById('feeFrontendId')?.value?.trim();
-        const next = (orderFrontend || feeFrontend || 'shadowbook.web').toLowerCase();
+        const next = (orderFrontend || 'shadowbook.web').toLowerCase();
         sdk.frontendId = next;
         if (document.getElementById('ordFrontendId')) document.getElementById('ordFrontendId').value = next;
-        if (document.getElementById('feeFrontendId')) document.getElementById('feeFrontendId').value = next;
         return next;
       }
 
@@ -1533,11 +1687,11 @@
         sendBtn.disabled = false;
         if (asset.toUpperCase() === 'TMINA') {
           hint.textContent =
-            `One-click deposit uses a native payment flow for ${asset}. Vault: ${vaultDepositAddress || '(not configured)'}.`;
+            `Deposit + Mint uses a native payment flow for ${asset}. Vault: ${vaultDepositAddress || '(not configured)'}.`;
           return;
         }
         hint.textContent =
-          `One-click deposit builds an FT-standard transfer transaction for ${asset} and asks your wallet to sign it. Vault: ` +
+          `Deposit + Mint builds an FT-standard transfer transaction for ${asset} and asks your wallet to sign it. Vault: ` +
           `${vaultDepositAddress || '(not configured)'}.`;
       }
 
@@ -1622,7 +1776,7 @@
         const amount = Number(document.getElementById('noteAmount').value || 0);
         if (!wallet) throw new Error('Wallet is required');
         if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be positive');
-        await syncWalletContext(wallet, 'balOut');
+        await syncWalletContext(wallet);
         const selected = document.getElementById('noteAsset').selectedOptions?.[0];
         const tokenId = selected?.getAttribute('data-token-id') || '';
         const asset = document.getElementById('noteAsset').value.trim() || 'asset';
@@ -1774,11 +1928,11 @@
             if (result.verifiedDepositTx?.txHash) {
               document.getElementById('noteDepositTxHash').value = result.verifiedDepositTx.txHash;
             }
-            await syncWalletContext(payload.wallet, 'balOut');
+            await syncWalletContext(payload.wallet);
             await refreshNoteAssetOptions();
             await refreshNotesPortfolio();
             await refreshPretradeChecklist();
-            if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
+            if (isActivityAutoRefreshEnabled()) await refreshActivity();
             return result;
           } catch (error) {
             lastError = error;
@@ -1884,37 +2038,29 @@
 
       function updateOrderIntent(market) {
         const root = document.getElementById('ordIntent');
-        if (!market) {
-          root.textContent = '';
-          return;
-        }
-        root.textContent = `Buttons trade base asset: Buy ${market.baseAsset} with ${market.quoteAsset} / Sell ${market.baseAsset} for ${market.quoteAsset}`;
+        if (root) root.textContent = '';
+        if (!market) return;
         document.getElementById('placeBuy').textContent = `Buy ${market.baseAsset}`;
         document.getElementById('placeSell').textContent = `Sell ${market.baseAsset}`;
-        updateFundingHint();
       }
 
       function updateFundingHint() {
-        const marketId = document.getElementById('ordMarketId')?.value?.trim();
-        const market = getMarketById(marketId);
-        const orderType = document.getElementById('ordType')?.value || 'LIMIT';
-        const hint = document.getElementById('ordFundingHint');
-        if (!hint) return;
-        if (!market) {
-          hint.textContent = 'Select a market to see funding requirements.';
-          return;
-        }
-        hint.textContent =
-          `Real-funds-only mode: sync wallet balances before trading. ` +
-          `Wallet totals stay on-chain; private notes provide the collateral consumed by orders. ` +
-          `${orderType === 'MARKET' ? 'Market orders are IOC and only execute against standing opposite liquidity.' : 'Limit orders lock collateral until filled, canceled, or expired.'}`;
+        return;
       }
 
       function updateFundingModeHint() {
         const hint = document.getElementById('ordFundingModeHint');
         if (!hint) return;
+        const visibility = document.getElementById('ordVisibility')?.value || 'public';
+        const orderType = document.getElementById('ordType')?.value || 'LIMIT';
         hint.textContent =
-          'Orders are note-collateralized only. The UI auto-selects eligible private notes by asset, then asks your wallet to sign the order authorization. Paste note hashes only to force a specific note set.';
+          (visibility === 'private'
+            ? 'Private dark orders use note funding and do not appear in the public book before execution. '
+            : 'Public anonymous orders show price and size in the book, but do not expose your wallet. ') +
+          'Orders are note-collateralized only. ' +
+          (orderType === 'MARKET'
+            ? 'Market orders are IOC and execute against standing liquidity.'
+            : 'Limit orders lock collateral until filled, canceled, or expired.');
       }
 
       function formatOrderError(error) {
@@ -2128,19 +2274,17 @@
           price.disabled = false;
           if (priceField) priceField.style.display = '';
         }
-        updateFundingHint();
+        updateFundingModeHint();
         updateVisibilityHint();
         refreshPretradeChecklist().catch(() => {});
       }
 
       function updateVisibilityHint() {
-        const mode = document.getElementById('ordVisibility')?.value || 'public';
-        const hint = document.getElementById('ordVisibilityHint');
-        if (!hint) return;
-        hint.textContent =
-          mode === 'private'
-            ? 'Private dark orders use note funding and do not appear in the public book before execution.'
-            : 'Public anonymous orders show price and size in the book, but do not expose your wallet.';
+        updateFundingModeHint();
+      }
+
+      function isActivityAutoRefreshEnabled() {
+        return Boolean(document.getElementById('activityAuto')?.checked);
       }
 
       function updateWalletButtonState() {
@@ -2185,9 +2329,12 @@
         updateWalletButtonState();
         updateOperatorPanelState();
         setText('orderOut', { ok: true, connectedWallet: wallet, realFundsMode });
+        const activityView = document.getElementById('activityView');
+        if (activityView) activityView.value = 'your';
         await refreshNoteAssetOptions();
         await refreshNotesPortfolio();
         await refreshPretradeChecklist();
+        await refreshActivity();
       }
 
       async function syncWalletIfNeeded(wallet, force = false) {
@@ -2212,6 +2359,7 @@
         const targets = ['bookPair', 'chartPair', 'ordPair'];
         for (const id of targets) {
           const el = document.getElementById(id);
+          if (!el) continue;
           el.innerHTML = '';
           for (const market of knownMarkets) {
             const opt = document.createElement('option');
@@ -2654,7 +2802,7 @@
           host.innerHTML = '<div class="book-empty">No public fills yet.</div>';
           return;
         }
-        const width = Math.max(640, Math.floor(host.clientWidth || 640));
+        const width = Math.max(260, Math.floor(host.clientWidth || 260));
         const height = Math.max(320, Math.floor(host.clientHeight || 320));
         const visibleCount = computeVisibleCandleCount(rows.length);
         const visibleRows = rows.slice(-visibleCount);
@@ -3337,6 +3485,9 @@
         refreshPretradeChecklist().catch(() => {});
       };
       document.getElementById('noteWallet').oninput = () => {
+        const noteWallet = document.getElementById('noteWallet').value.trim();
+        const chainWallet = document.getElementById('chainWallet');
+        if (chainWallet && !chainWallet.value.trim()) chainWallet.value = noteWallet;
         refreshNoteAssetOptions().catch(() => {});
         refreshNotesPortfolio().catch(() => {});
         refreshWithdrawPanel().catch(() => {});
@@ -3365,7 +3516,7 @@
           setText('inspectOut', result);
           await refreshTrades();
           await refreshBook();
-          if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
+          if (isActivityAutoRefreshEnabled()) await refreshActivity();
           await refreshPretradeChecklist();
         } catch (e) { setText('inspectOut', String(e)); }
       };
@@ -3373,16 +3524,9 @@
       document.getElementById('syncBtn').onclick = async () => {
         try {
           const wallet = document.getElementById('chainWallet').value.trim();
-          await syncWalletContext(wallet, 'balOut');
-        } catch (e) { setText('balOut', String(e)); }
-      };
-
-      document.getElementById('balBtn').onclick = async () => {
-        try {
-          const wallet = document.getElementById('chainWallet').value.trim();
-          const result = await sdk.getBalance(wallet);
-          setText('balOut', result);
-        } catch (e) { setText('balOut', String(e)); }
+          setText('notesPortfolioOut', 'Syncing on-chain balances and rebuilding wallet + private collateral view...');
+          await syncWalletContext(wallet);
+        } catch (e) { setText('notesPortfolioOut', String(e)); }
       };
 
       document.getElementById('mintNoteBtn').onclick = async () => {
@@ -3406,7 +3550,7 @@
           await refreshNoteAssetOptions();
           await refreshNotesPortfolio();
           await refreshPretradeChecklist();
-          if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
+          if (isActivityAutoRefreshEnabled()) await refreshActivity();
         } catch (e) { setText('vaultOut', String(e)); }
       };
 
@@ -3455,38 +3599,9 @@
         }
       };
 
-      document.getElementById('mintAutoNoteBtn').onclick = async () => {
-        try {
-          const selected = document.getElementById('noteAsset').selectedOptions?.[0];
-          const tokenId = selected?.getAttribute('data-token-id') || '';
-          const txHash = document.getElementById('noteDepositTxHash').value.trim();
-          if (!txHash) {
-            throw new Error(
-              'No deposit tx hash detected. Click Send Deposit Tx (Wallet) first. If wallet does not return tx hash, paste it in Advanced.'
-            );
-          }
-          const payload = {
-            wallet: document.getElementById('noteWallet').value.trim(),
-            asset: document.getElementById('noteAsset').value.trim(),
-            tokenId,
-            amount: Number(document.getElementById('noteAmount').value || 0),
-            txHash
-          };
-          const result = await sdk.depositAuto(payload);
-          setText('vaultOut', result);
-          if (result.note?.note) {
-            document.getElementById('noteInput').value = result.note.note;
-          }
-          if (result.verifiedDepositTx?.txHash) document.getElementById('noteDepositTxHash').value = result.verifiedDepositTx.txHash;
-          await refreshNoteAssetOptions();
-          await refreshNotesPortfolio();
-          await refreshPretradeChecklist();
-          if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
-        } catch (e) { setText('vaultOut', String(e)); }
-      };
-
       document.getElementById('refreshNotesBtn').onclick = async () => {
         try {
+          setText('notesPortfolioOut', 'Refreshing wallet + private collateral...');
           await refreshNotesPortfolio();
         } catch (e) { setText('notesPortfolioOut', String(e)); }
       };
@@ -3527,6 +3642,11 @@
           await refreshNoteAssetOptions();
           await refreshActivity();
           await refreshWithdrawPanel();
+          if (wallet) {
+            const chainWallet = document.getElementById('chainWallet');
+            if (chainWallet) chainWallet.value = wallet;
+            await syncWalletContext(wallet);
+          }
         } catch (e) {
           setText('vaultOut', String(e));
         } finally {
@@ -3563,7 +3683,7 @@
           setText('makerOut', result);
           await refreshTrades();
           await refreshBook();
-          if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
+          if (isActivityAutoRefreshEnabled()) await refreshActivity();
         } catch (e) {
           setText('makerOut', String(e));
         }
@@ -3583,7 +3703,7 @@
           setText('makerOut', result);
           await refreshTrades();
           await refreshBook();
-          if (document.getElementById('activityAuto').value === 'on') await refreshActivity();
+          if (isActivityAutoRefreshEnabled()) await refreshActivity();
         } catch (e) {
           setText('makerOut', String(e));
         }
@@ -3608,6 +3728,7 @@
       document.getElementById('refreshOperatorBtn').onclick = async () => {
         try {
           await refreshOperatorPanel();
+          await refreshFeeStats();
         } catch (e) {
           setText('operatorOut', String(e));
         }
@@ -3638,7 +3759,6 @@
       };
 
       document.getElementById('ordFrontendId').onchange = () => syncFrontendIdFromUi();
-      document.getElementById('feeFrontendId').onchange = () => syncFrontendIdFromUi();
 
       function activateTab(mode) {
         const tradingActive = mode === 'trading';
@@ -3676,7 +3796,7 @@
           await refreshFeeStats();
           await refreshOperatorPanel();
           await refreshPretradeChecklist();
-          document.getElementById('balBtn').click();
+          document.getElementById('refreshNotesBtn').click();
           setInterval(async () => {
             try {
               const w = document.getElementById('ordWallet')?.value?.trim();

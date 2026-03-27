@@ -73,6 +73,10 @@ const BACKGROUND_WORKER_RESTART_DELAY_MS = Math.max(
   Number.parseInt(process.env.BACKGROUND_WORKER_RESTART_DELAY_MS || '3000', 10) || 3000
 );
 const PROOF_WORKER_API_KEY = String(process.env.PROOF_WORKER_API_KEY || '').trim();
+const ZEKO_FAUCET_COMMAND = String(process.env.ZEKO_FAUCET_COMMAND || 'npx -y @zeko-labs/faucet-cli').trim();
+const ZEKO_FAUCET_GITHUB_TOKEN = String(
+  process.env.ZEKO_FAUCET_GITHUB_TOKEN || process.env.GITHUB_TOKEN || ''
+).trim();
 const REAL_FUNDS_MODE = true;
 const ONCHAIN_SYNC_TTL_MS = Number.parseInt(process.env.ONCHAIN_SYNC_TTL_MS || '60000', 10);
 const ASSET_DECIMALS = (() => {
@@ -3186,6 +3190,81 @@ async function runJsonCommand(command, input) {
   });
 }
 
+async function runJsonCommandCapture(command, envOverrides = {}) {
+  if (!command) throw new Error('command is required');
+  return await new Promise((resolve, reject) => {
+    const child = spawn(command, {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        ...envOverrides
+      },
+      shell: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += String(chunk || '');
+    });
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk || '');
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolve({
+        code: Number.isFinite(code) ? code : 1,
+        stdout: stdout.trim(),
+        stderr: stderr.trim()
+      });
+    });
+  });
+}
+
+function requireMinaAddress(value, field) {
+  const address = requireString(value, field);
+  if (!/^B62[1-9A-HJ-NP-Za-km-z]{40,60}$/.test(address)) {
+    throw new Error(`${field} must be a valid Mina address`);
+  }
+  return address;
+}
+
+async function claimZekoTestnetFaucet(address) {
+  if (!ZEKO_FAUCET_COMMAND) throw new Error('zeko faucet command is not configured');
+  if (!ZEKO_FAUCET_GITHUB_TOKEN) throw new Error('zeko faucet github token is not configured');
+  const target = requireMinaAddress(address, 'wallet');
+  const command = `${ZEKO_FAUCET_COMMAND} claim ${target} --json`;
+  const result = await runJsonCommandCapture(command, {
+    GITHUB_TOKEN: ZEKO_FAUCET_GITHUB_TOKEN
+  });
+  const payloadText = result.stdout || result.stderr || '';
+  let payload = null;
+  if (payloadText) {
+    try {
+      payload = JSON.parse(payloadText);
+    } catch {}
+  }
+  if (payload && typeof payload === 'object') {
+    return {
+      ok: Boolean(payload.success),
+      exitCode: result.code,
+      faucet: payload
+    };
+  }
+  if (result.code !== 0) {
+    throw new Error((result.stderr || result.stdout || `faucet command exited ${result.code}`).trim());
+  }
+  return {
+    ok: true,
+    exitCode: result.code,
+    faucet: {
+      success: true,
+      address: target,
+      message: 'Claim submitted'
+    }
+  };
+}
+
 async function submitOnchainWithdrawalPayout({ accountId, wallet, asset, tokenId, amount }) {
   if (!SETTLEMENT_PAYOUT_COMMAND) {
     throw new Error('SETTLEMENT_PAYOUT_COMMAND is required for note withdrawals');
@@ -3595,6 +3674,11 @@ function computeStatusSnapshot(port) {
       settlementBatching: {
         maxTrades: SETTLEMENT_BATCH_MAX_TRADES,
         maxDelayMs: SETTLEMENT_BATCH_MAX_DELAY_MS
+      },
+      faucet: {
+        enabled: Boolean(ZEKO_FAUCET_COMMAND && ZEKO_FAUCET_GITHUB_TOKEN),
+        commandConfigured: Boolean(ZEKO_FAUCET_COMMAND),
+        githubTokenConfigured: Boolean(ZEKO_FAUCET_GITHUB_TOKEN)
       },
       gtcOrderExpiryMs: GTC_ORDER_EXPIRY_MS,
       zkapp: computeZkappReadiness()
@@ -4936,6 +5020,19 @@ async function main() {
           fundingNoteHashes
         });
         writeJson(res, 200, result);
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/faucet/claim') {
+        const body = await readJsonBody(req);
+        const wallet = requireMinaAddress(body.wallet, 'wallet');
+        const result = await claimZekoTestnetFaucet(wallet);
+        writeJson(res, 200, {
+          ok: result.ok,
+          wallet,
+          faucet: result.faucet,
+          exitCode: result.exitCode
+        });
         return;
       }
 

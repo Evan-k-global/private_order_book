@@ -88,3 +88,17 @@ So the architecture is:
 - on-chain batch settlement / root anchoring
 
 That is lean enough for demo-scale deployment while leaving a clean path to horizontal proof scaling later.
+
+## Faucet Options
+
+For the public UI, the funding tab links users to the official Zeko faucet:
+
+- [https://faucet.zeko.io/](https://faucet.zeko.io/)
+
+That keeps faucet policy and GitHub authentication out of the app server.
+
+If you are wiring up internal agents or operator workflows instead, you can also use the official Zeko faucet CLI directly:
+
+- [zeko-labs/faucet-cli](https://github.com/zeko-labs/faucet-cli)
+
+That path is better suited to scripts and bots than the public UI, especially when you want explicit control over faucet claiming behavior outside the browser.

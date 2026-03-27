@@ -156,6 +156,10 @@
     return this.request('/api/darkpool/vault/withdraw', { method: 'POST', body: payload });
   };
 
+  ShadowBookClient.prototype.claimFaucet = function claimFaucet(payload) {
+    return this.request('/api/darkpool/faucet/claim', { method: 'POST', body: payload });
+  };
+
   ShadowBookClient.prototype.redeemNote = function redeemNote(payload) {
     return this.request('/api/darkpool/notes/redeem', { method: 'POST', body: payload });
   };
