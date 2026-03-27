@@ -8,16 +8,16 @@
     <style>
       :root {
         --bg: #06090f;
-        --panel: #081629;
-        --panel-alt: #0b1b31;
-        --line: #294564;
+        --panel: #071324;
+        --panel-alt: #09182b;
+        --line: #29425f;
         --ink: #d9e7f6;
         --muted: #7f93aa;
         --green: #2cd889;
         --red: #ff6b7f;
         --cyan: #4ec7ff;
         --amber: #f2c572;
-        --brand-surface: rgba(8, 22, 41, 0.95);
+        --brand-surface: rgba(7, 19, 36, 0.96);
         --shell-max: 1580px;
         --shell-gutter: 16px;
         --header-offset: 104px;
@@ -992,6 +992,12 @@
       .brandbar > .pill {
         margin-left: auto;
       }
+      .header-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+      }
       .panel-hidden {
         display: none;
       }
@@ -1118,8 +1124,10 @@
         <button id="tabTrading" class="tab-btn active">Trading</button>
         <button id="tabFunding" class="tab-btn">Funding</button>
       </div>
-      <button type="button" class="ghost" id="globalConnectWalletBtn" style="width:auto;padding:6px 12px;">Connect Wallet</button>
-      <span class="pill">Zeko Testnet</span>
+      <div class="header-actions">
+        <span class="pill">Zeko Testnet</span>
+        <button type="button" class="ghost" id="globalConnectWalletBtn" style="width:auto;padding:6px 12px;">Connect Wallet</button>
+      </div>
     </div>
     <div id="tradingPanel" class="app">
       <section class="card order-entry-card">
