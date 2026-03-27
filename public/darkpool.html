@@ -302,10 +302,15 @@
         font-size: 12px;
       }
       .price-chart-card .bd {
-        height: auto;
+        height: 100%;
         display: grid;
         grid-template-rows: minmax(0, 1fr);
         min-height: 0;
+        overflow: hidden;
+      }
+      .chart-body {
+        min-height: 0;
+        height: 100%;
         overflow: hidden;
       }
       .price-chart-card .hd {
@@ -386,6 +391,7 @@
         grid-template-columns: 42px minmax(0, 1fr);
         gap: 10px;
         min-height: 0;
+        height: 100%;
       }
       .chart-toolrail {
         border: 1px solid #1f3346;
@@ -415,8 +421,9 @@
       }
       .chart-mainpane {
         display: grid;
-        grid-template-rows: auto minmax(0, 1fr) auto auto;
+        grid-template-rows: auto minmax(340px, 1fr) auto auto;
         min-height: 0;
+        height: 100%;
         border: 1px solid #1f3346;
         border-radius: 10px;
         background: linear-gradient(180deg, #0c141c, #08121c);
@@ -430,6 +437,8 @@
         padding: 9px 12px;
         border-bottom: 1px solid #17324a;
         min-height: 44px;
+        position: relative;
+        z-index: 1;
       }
       .chart-legend-actions {
         display: inline-flex;
@@ -478,9 +487,11 @@
       .chart-host {
         width: 100%;
         height: 100%;
-        min-height: 500px;
+        min-height: 340px;
         background: #08121c;
         overflow: hidden;
+        position: relative;
+        z-index: 0;
       }
       .order-book-card .bd,
       .activity-card .bd {
@@ -540,6 +551,8 @@
         padding: 10px 12px;
         border-top: 1px solid #17324a;
         background: #0a1218;
+        position: relative;
+        z-index: 1;
       }
       .chart-pill-stat {
         border: 1px solid #1f3346;
@@ -571,6 +584,8 @@
         padding: 10px 12px;
         border-top: 1px solid #17324a;
         background: #09131b;
+        position: relative;
+        z-index: 1;
       }
       .chart-zoom-wrap {
         display: grid;
@@ -2511,6 +2526,15 @@
         }
       }
 
+      function teardownTradeChart() {
+        if (chartApi && typeof chartApi.remove === 'function') {
+          try { chartApi.remove(); } catch (_) {}
+        }
+        chartApi = null;
+        candleSeries = null;
+        volumeSeries = null;
+      }
+
       function updateChartHero(candles, trades, market) {
         const rows = Array.isArray(candles) ? candles : [];
         const last = rows.length ? rows[rows.length - 1] : null;
@@ -2785,8 +2809,8 @@
       }
 
       function renderCurrentChart(candles, trades, market) {
-        const renderedWithLibrary = applyChartSeries(candles, trades, market);
-        if (!renderedWithLibrary) drawTapeChart(candles, trades, market);
+        teardownTradeChart();
+        drawTapeChart(candles, trades, market);
         updateChartHero(candles, trades, market);
         updateChartLegend(candles, trades, market);
         renderChartSummary(candles, trades, market);
@@ -3233,6 +3257,7 @@
         const market = getMarketById(document.getElementById('bookPair').value);
         if (market) {
           clearReplaceOrderState();
+          document.getElementById('chartPair').value = market.marketId;
           document.getElementById('ordPair').value = market.marketId;
           document.getElementById('makerPair').value = market.pair;
           document.getElementById('ordMarketId').value = market.marketId;
@@ -3240,7 +3265,10 @@
           renderMarketVerify(market);
           updateOrderIntent(market);
         }
-        try { await refreshBook(); } catch (e) { console.error(e); }
+        try {
+          await refreshBook();
+          await refreshTrades();
+        } catch (e) { console.error(e); }
       };
       document.getElementById('ordPair').onchange = async () => {
         const market = getMarketById(document.getElementById('ordPair').value);
@@ -3262,7 +3290,14 @@
         }
       };
       document.getElementById('chartPair').onchange = async () => {
-        try { await refreshTrades(); } catch (e) { console.error(e); }
+        const market = getMarketById(document.getElementById('chartPair').value);
+        if (market) {
+          document.getElementById('bookPair').value = market.marketId;
+        }
+        try {
+          await refreshTrades();
+          await refreshBook();
+        } catch (e) { console.error(e); }
       };
       for (const btn of Array.from(document.querySelectorAll('#chartIntervalButtons .seg-btn'))) {
         btn.onclick = async () => {
