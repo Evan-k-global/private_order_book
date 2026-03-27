@@ -876,6 +876,16 @@
       .funding-notes {
         align-self: start;
       }
+      .funding-sync-row {
+        align-items: end;
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+      .funding-sync-row #syncBtn {
+        width: auto;
+        min-height: 0;
+        padding: 8px 12px;
+        align-self: end;
+      }
       .acquire-links {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1470,10 +1480,12 @@
             <div class="footnote">
               Fund your wallet on Zeko testnet, then sync balances into ShadowBook.
             </div>
-            <div><label>Wallet</label><input id="chainWallet" value="B62qdemo_wallet_alpha" /></div>
-            <div class="grid2">
+            <div class="grid2 funding-sync-row">
               <button id="syncBtn" class="txn">Sync On-Chain Balance</button>
-              <button class="ghost" id="refreshNotesBtn">Refresh Wallet + Notes</button>
+              <div>
+                <label>Wallet</label>
+                <input id="chainWallet" value="B62qdemo_wallet_alpha" />
+              </div>
             </div>
             <label>Latest Minted Note</label>
             <textarea id="noteInput" placeholder="zkv_..."></textarea>
@@ -3599,13 +3611,6 @@
         }
       };
 
-      document.getElementById('refreshNotesBtn').onclick = async () => {
-        try {
-          setText('notesPortfolioOut', 'Refreshing wallet + private collateral...');
-          await refreshNotesPortfolio();
-        } catch (e) { setText('notesPortfolioOut', String(e)); }
-      };
-
       document.getElementById('poolBtn').onclick = async () => {
         try {
           setText('vaultOut', await sdk.getVaultPool());
@@ -3796,7 +3801,8 @@
           await refreshFeeStats();
           await refreshOperatorPanel();
           await refreshPretradeChecklist();
-          document.getElementById('refreshNotesBtn').click();
+          setText('notesPortfolioOut', 'Refreshing wallet + private collateral...');
+          await refreshNotesPortfolio();
           setInterval(async () => {
             try {
               const w = document.getElementById('ordWallet')?.value?.trim();

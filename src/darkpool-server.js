@@ -68,6 +68,10 @@ const DARKPOOL_HOST = process.env.DARKPOOL_HOST || (process.env.RENDER ? '0.0.0.
 const AUTO_RUN_BACKGROUND_WORKERS = String(process.env.AUTO_RUN_BACKGROUND_WORKERS || 'false').toLowerCase() === 'true';
 const AUTO_RUN_PROOF_WORKER = String(process.env.AUTO_RUN_PROOF_WORKER || String(AUTO_RUN_BACKGROUND_WORKERS)).toLowerCase() === 'true';
 const AUTO_RUN_SETTLEMENT_WORKER = String(process.env.AUTO_RUN_SETTLEMENT_WORKER || String(AUTO_RUN_BACKGROUND_WORKERS)).toLowerCase() === 'true';
+const ZKAPP_COMMIT_MAX_OLD_SPACE_MB = Math.max(
+  0,
+  Number.parseInt(process.env.ZKAPP_COMMIT_MAX_OLD_SPACE_MB || '4096', 10) || 4096
+);
 const BACKGROUND_WORKER_RESTART_DELAY_MS = Math.max(
   1000,
   Number.parseInt(process.env.BACKGROUND_WORKER_RESTART_DELAY_MS || '3000', 10) || 3000
@@ -5087,8 +5091,13 @@ async function main() {
       });
     }
     if (AUTO_RUN_SETTLEMENT_WORKER) {
+      const settlementNodeOptions =
+        ZKAPP_COMMIT_MAX_OLD_SPACE_MB > 0
+          ? `${process.env.NODE_OPTIONS ? `${process.env.NODE_OPTIONS} ` : ''}--max-old-space-size=${ZKAPP_COMMIT_MAX_OLD_SPACE_MB}`
+          : process.env.NODE_OPTIONS || '';
       startManagedBackgroundProcess('settlement-worker', 'node scripts/settlement-worker.js', {
-        DARKPOOL_API: localApiBase
+        DARKPOOL_API: localApiBase,
+        ...(settlementNodeOptions ? { NODE_OPTIONS: settlementNodeOptions } : {})
       });
     }
   });

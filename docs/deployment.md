@@ -23,9 +23,11 @@ At minimum, configure:
 ```env
 DARKPOOL_HOST=0.0.0.0
 AUTO_RUN_BACKGROUND_WORKERS=true
-REQUIRE_CACHED_PRIVATE_STATE_PROOF=true
+AUTO_RUN_PROOF_WORKER=false
+AUTO_RUN_SETTLEMENT_WORKER=true
+ZKAPP_COMMIT_USE_PROOF=false
+REQUIRE_CACHED_PRIVATE_STATE_PROOF=false
 ALLOW_INLINE_PRIVATE_STATE_PROVING=false
-PROOF_WORKER_API_KEY=<strong-random-secret>
 ```
 
 Plus your existing chain / app secrets:
@@ -51,10 +53,22 @@ Plus your existing chain / app secrets:
 
 - HTTP API + UI
 - matcher
-- embedded proof-precompute loop
 - embedded settlement loop
 
 This is the simplest deployment shape for the demo.
+
+## Lean vs Advanced Contracts
+
+The hosted default path now uses the lean settlement contract in `zkapp/contract.ts`.
+
+That contract:
+- anchors settlement progression on-chain
+- commits the public/private roots needed by the market
+- avoids pulling the heavy private-state proof program into normal startup and batch commit
+
+The proof-heavy reference path lives in `zkapp/advanced-contract.ts`.
+
+That version is useful for partner implementations or future research, but it is intentionally not the default hosted contract because it carries substantially higher compile and memory overhead.
 
 ## Scaling Proving Later
 

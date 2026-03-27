@@ -1,6 +1,7 @@
 import path from 'node:path';
-import { Bool, Field, MerkleMap, Poseidon, UInt64 } from 'o1js';
+import { Bool, Field, MerkleMap, Mina, Poseidon, PublicKey, UInt64, fetchAccount } from 'o1js';
 import { getNextPending, loadBatchFile, type StoredSettlementBatch } from './batch-store.js';
+import { ShadowBookSettlementZkApp } from './contract.js';
 import {
   MAX_NOTE_OUTPUT_UPDATES,
   MAX_NOTE_SPEND_UPDATES,
@@ -21,6 +22,36 @@ import {
   type EngineStateSequencingReceipt
 } from './private-state-merkle.js';
 import { hashHexToField, readOptionalEnv } from './utils.js';
+
+async function loadLivePrevRoots(): Promise<PrivateStateRoots | null> {
+  const graphql = String(process.env.ZEKO_GRAPHQL || '').trim();
+  const zkappKey = String(process.env.ZKAPP_PUBLIC_KEY || '').trim();
+  if (!graphql || !zkappKey) return null;
+
+  const network = Mina.Network({
+    mina: graphql,
+    archive: graphql
+  });
+  Mina.setActiveInstance(network);
+
+  const zkappAddress = PublicKey.fromBase58(zkappKey);
+  const account = await fetchAccount({ publicKey: zkappAddress });
+  if (account.error) {
+    throw new Error(`failed to fetch live zkapp roots for ${zkappKey}: ${account.error}`);
+  }
+
+  const zkapp = new ShadowBookSettlementZkApp(zkappAddress);
+  return new PrivateStateRoots({
+    noteRoot: zkapp.noteRoot.get(),
+    nullifierRoot: zkapp.nullifierRoot.get(),
+    settlementRoot: zkapp.settlementRoot.get()
+  });
+}
+
+async function getPrevRootsOverride(overrides: ProofRootOverrides): Promise<PrivateStateRoots | null> {
+  if (overrides.prevRoots) return overrides.prevRoots;
+  return loadLivePrevRoots();
+}
 
 function sequencingHash(receipts: EngineStateSequencingReceipt[]): Field {
   const fields = receipts
@@ -211,6 +242,8 @@ export async function buildPendingPrivateStateProofInputs(overrides: ProofRootOv
     prevNoteMap.set(noteKey, newValue);
   }
 
+  const prevRootsOverride = await getPrevRootsOverride(overrides);
+
   const computedPrevRoots = new PrivateStateRoots({
     noteRoot: buildMap(
       Array.from(prevActiveNotes.values())
@@ -222,9 +255,9 @@ export async function buildPendingPrivateStateProofInputs(overrides: ProofRootOv
         .sort()
         .map((nullifier) => ({ key: hashHexToField(String(nullifier)), value: Field(1) }))
     ).getRoot(),
-    settlementRoot: overrides.prevRoots?.settlementRoot || hashHexToField(String(pending.batchHash || ''))
+    settlementRoot: prevRootsOverride?.settlementRoot || hashHexToField(String(pending.batchHash || ''))
   });
-  const effectivePrevRoots = overrides.prevRoots || computedPrevRoots;
+  const effectivePrevRoots = prevRootsOverride || computedPrevRoots;
 
   const computedNextRoots = new PrivateStateRoots({
     noteRoot: prevNoteMap.getRoot(),
@@ -232,11 +265,11 @@ export async function buildPendingPrivateStateProofInputs(overrides: ProofRootOv
     settlementRoot: hashHexToField(String(pending.batchHash || ''))
   });
 
-  if (overrides.prevRoots) {
-    if (overrides.prevRoots.noteRoot.toString() !== computedPrevRoots.noteRoot.toString()) {
+  if (prevRootsOverride) {
+    if (prevRootsOverride.noteRoot.toString() !== computedPrevRoots.noteRoot.toString()) {
       throw new Error(`prev note root mismatch for pending batch ${pending.batchId}`);
     }
-    if (overrides.prevRoots.nullifierRoot.toString() !== computedPrevRoots.nullifierRoot.toString()) {
+    if (prevRootsOverride.nullifierRoot.toString() !== computedPrevRoots.nullifierRoot.toString()) {
       throw new Error(`prev nullifier root mismatch for pending batch ${pending.batchId}`);
     }
   }

@@ -1,7 +1,6 @@
 import 'reflect-metadata';
 import { AccountUpdate, fetchAccount, Mina, PrivateKey, PublicKey, UInt64 } from 'o1js';
 import { ShadowBookSettlementZkApp } from './contract.js';
-import { compilePrivateStateTransitionProgram } from './private-state-prover.js';
 import { requireEnv, readOptionalEnv, hashStringToField } from './utils.js';
 
 function sleep(ms: number) {
@@ -94,7 +93,6 @@ async function main() {
   Mina.setActiveInstance(network);
 
   console.log('[zkapp:deploy] compiling contract...');
-  await compilePrivateStateTransitionProgram();
   await ShadowBookSettlementZkApp.compile();
 
   const zkapp = new ShadowBookSettlementZkApp(zkappAddress);

@@ -10,8 +10,9 @@ import {
   state,
   Poseidon
 } from 'o1js';
+import { PrivateStateTransitionProof } from './private-state-prover.js';
 
-export class SettlementBatchCommittedEvent extends Struct({
+export class AdvancedSettlementBatchCommittedEvent extends Struct({
   batchId: UInt64,
   batchHash: Field,
   newSettlementRoot: Field,
@@ -21,10 +22,7 @@ export class SettlementBatchCommittedEvent extends Struct({
   newSequencingRoot: Field
 }) {}
 
-// Lean default settlement contract for hosted/demo use.
-// It anchors batch progression and public/private roots without pulling
-// the heavier private-state proof program into the normal deploy/commit path.
-export class ShadowBookSettlementZkApp extends SmartContract {
+export class ShadowBookSettlementAdvancedZkApp extends SmartContract {
   @state(Field) marketConfigHash = State<Field>();
   @state(Field) settlementRoot = State<Field>();
   @state(Field) bookRoot = State<Field>();
@@ -34,7 +32,7 @@ export class ShadowBookSettlementZkApp extends SmartContract {
   @state(UInt64) lastBatchId = State<UInt64>();
 
   events = {
-    batchCommitted: SettlementBatchCommittedEvent
+    batchCommitted: AdvancedSettlementBatchCommittedEvent
   };
 
   init() {
@@ -141,7 +139,74 @@ export class ShadowBookSettlementZkApp extends SmartContract {
 
     this.emitEvent(
       'batchCommitted',
-      new SettlementBatchCommittedEvent({
+      new AdvancedSettlementBatchCommittedEvent({
+        batchId,
+        batchHash,
+        newSettlementRoot: nextRoot,
+        newBookRoot: bookRoot,
+        newNoteRoot: noteRoot,
+        newNullifierRoot: nullifierRoot,
+        newSequencingRoot: sequencingRoot
+      })
+    );
+  }
+
+  @method async commitBatchWithProof(
+    batchId: UInt64,
+    batchHash: Field,
+    bookRoot: Field,
+    noteRoot: Field,
+    nullifierRoot: Field,
+    sequencingRoot: Field,
+    proof: PrivateStateTransitionProof
+  ) {
+    const configuredHash = this.marketConfigHash.getAndRequireEquals();
+    configuredHash.assertNotEquals(Field(0));
+    this.requireSignature();
+
+    const currentRoot = this.settlementRoot.getAndRequireEquals();
+    const currentBookRoot = this.bookRoot.getAndRequireEquals();
+    const currentNoteRoot = this.noteRoot.getAndRequireEquals();
+    const currentNullifierRoot = this.nullifierRoot.getAndRequireEquals();
+    const currentSequencingRoot = this.sequencingRoot.getAndRequireEquals();
+    const currentBatch = this.lastBatchId.getAndRequireEquals();
+
+    const expected = currentBatch.add(UInt64.from(1));
+    expected.assertEquals(batchId);
+
+    proof.verify();
+    proof.publicInput.batchHash.assertEquals(batchHash);
+    proof.publicInput.prevRoots.noteRoot.assertEquals(currentNoteRoot);
+    proof.publicInput.prevRoots.nullifierRoot.assertEquals(currentNullifierRoot);
+    proof.publicInput.nextRoots.noteRoot.assertEquals(noteRoot);
+    proof.publicInput.nextRoots.nullifierRoot.assertEquals(nullifierRoot);
+    proof.publicOutput.nextRoots.noteRoot.assertEquals(noteRoot);
+    proof.publicOutput.nextRoots.nullifierRoot.assertEquals(nullifierRoot);
+
+    const nextRoot = Poseidon.hash([
+      currentRoot,
+      batchHash,
+      ...batchId.toFields(),
+      currentBookRoot,
+      currentNoteRoot,
+      currentNullifierRoot,
+      currentSequencingRoot,
+      bookRoot,
+      noteRoot,
+      nullifierRoot,
+      sequencingRoot
+    ]);
+
+    this.settlementRoot.set(nextRoot);
+    this.bookRoot.set(bookRoot);
+    this.noteRoot.set(noteRoot);
+    this.nullifierRoot.set(nullifierRoot);
+    this.sequencingRoot.set(sequencingRoot);
+    this.lastBatchId.set(batchId);
+
+    this.emitEvent(
+      'batchCommitted',
+      new AdvancedSettlementBatchCommittedEvent({
         batchId,
         batchHash,
         newSettlementRoot: nextRoot,

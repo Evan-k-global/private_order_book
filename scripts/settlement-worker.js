@@ -15,6 +15,7 @@ const ZKAPP_COMMIT_MAX_OLD_SPACE_MB = Math.max(
   0,
   Number.parseInt(process.env.ZKAPP_COMMIT_MAX_OLD_SPACE_MB || '4096', 10) || 4096
 );
+const ZKAPP_COMMIT_USE_PROOF = String(process.env.ZKAPP_COMMIT_USE_PROOF || 'false').toLowerCase() === 'true';
 const REQUIRE_CACHED_PRIVATE_STATE_PROOF = String(
   process.env.REQUIRE_CACHED_PRIVATE_STATE_PROOF || 'true'
 ).toLowerCase() === 'true';
@@ -24,6 +25,7 @@ const PRIVATE_STATE_PROOFS_DIR = String(
 const ZKAPP_COMMIT_COMMAND = String(
   process.env.ZKAPP_COMMIT_COMMAND || 'node --enable-source-maps dist-zkapp/commit-next-batch.js'
 ).trim();
+let commitNextPendingBatchFn = null;
 
 function cachedProofPath(batchId) {
   return path.resolve(PRIVATE_STATE_PROOFS_DIR, `batch-${batchId}.json`);
@@ -48,50 +50,20 @@ async function getNextPending() {
   return pending[0] || null;
 }
 
-function runZkappCommit(projectRoot) {
-  return new Promise((resolve, reject) => {
-    const env = { ...process.env };
-    if (ZKAPP_COMMIT_MAX_OLD_SPACE_MB > 0) {
-      const maxOldSpace = `--max-old-space-size=${ZKAPP_COMMIT_MAX_OLD_SPACE_MB}`;
-      env.NODE_OPTIONS = env.NODE_OPTIONS ? `${env.NODE_OPTIONS} ${maxOldSpace}` : maxOldSpace;
-    }
-    const child = spawn(ZKAPP_COMMIT_COMMAND, {
-      cwd: projectRoot,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env,
-      shell: true
-    });
+async function loadCommitModule(projectRoot) {
+  if (commitNextPendingBatchFn) return commitNextPendingBatchFn;
+  const modulePath = path.resolve(projectRoot, 'dist-zkapp', 'commit-next-batch.js');
+  const mod = await import(modulePath);
+  if (typeof mod.commitNextPendingBatch !== 'function') {
+    throw new Error('dist-zkapp/commit-next-batch.js does not export commitNextPendingBatch()');
+  }
+  commitNextPendingBatchFn = mod.commitNextPendingBatch;
+  return commitNextPendingBatchFn;
+}
 
-    let out = '';
-    let err = '';
-    child.stdout.on('data', (chunk) => {
-      out += String(chunk);
-      process.stdout.write(String(chunk));
-    });
-    child.stderr.on('data', (chunk) => {
-      err += String(chunk);
-      process.stderr.write(String(chunk));
-    });
-
-    child.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`zkapp:commit-next failed (${code})\n${err}`));
-        return;
-      }
-      const first = out.indexOf('{');
-      const last = out.lastIndexOf('}');
-      if (first === -1 || last === -1 || last <= first) {
-        resolve({ ok: true, message: 'commit script completed (no json body detected)' });
-        return;
-      }
-      try {
-        const parsed = JSON.parse(out.slice(first, last + 1));
-        resolve(parsed);
-      } catch {
-        resolve({ ok: true, message: 'commit script completed (json parse skipped)' });
-      }
-    });
-  });
+async function runZkappCommit(projectRoot) {
+  const commitNextPendingBatch = await loadCommitModule(projectRoot);
+  return await commitNextPendingBatch();
 }
 
 function runPayoutCommand(command, batch) {
@@ -198,7 +170,7 @@ async function commitLoop() {
           console.log(`[settlement-worker] local committed batch ${committed.committed.batchId}`);
         }
       } else if (MODE === 'zkapp') {
-        if (REQUIRE_CACHED_PRIVATE_STATE_PROOF && !existsSync(cachedProofPath(pending.batchId))) {
+        if (ZKAPP_COMMIT_USE_PROOF && REQUIRE_CACHED_PRIVATE_STATE_PROOF && !existsSync(cachedProofPath(pending.batchId))) {
           console.log(
             `[settlement-worker] waiting for cached private-state proof for batch ${pending.batchId} before payouts/commit`
           );

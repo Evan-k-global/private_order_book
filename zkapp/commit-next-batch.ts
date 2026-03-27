@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   fetchAccount,
   Mina,
@@ -10,6 +11,7 @@ import {
   UInt64
 } from 'o1js';
 import { ShadowBookSettlementZkApp } from './contract.js';
+import { ShadowBookSettlementAdvancedZkApp } from './advanced-contract.js';
 import { getNextPending, loadBatchFile, saveBatchFile } from './batch-store.js';
 import { buildPendingPrivateStateProofInputs } from './private-state-artifacts.js';
 import {
@@ -18,6 +20,9 @@ import {
   compilePrivateStateTransitionProgram
 } from './private-state-prover.js';
 import { hashHexToField, readOptionalEnv, requireEnv } from './utils.js';
+
+let leanCompilePromise: Promise<void> | null = null;
+let advancedCompilePromise: Promise<void> | null = null;
 
 function parseBoolEnv(name: string, fallback: boolean): boolean {
   const value = process.env[name];
@@ -82,9 +87,32 @@ async function loadCachedProofArtifact(
   };
 }
 
-async function main() {
+async function ensureCompiled(batchId: number, usePrivateStateProof: boolean) {
+  if (usePrivateStateProof) {
+    if (!advancedCompilePromise) {
+      advancedCompilePromise = (async () => {
+        console.log(`[zkapp:commit-next-batch] compiling advanced settlement contract before batch ${batchId}...`);
+        await compilePrivateStateTransitionProgram();
+        await ShadowBookSettlementAdvancedZkApp.compile();
+      })();
+    }
+    await advancedCompilePromise;
+    return;
+  }
+
+  if (!leanCompilePromise) {
+    leanCompilePromise = (async () => {
+      console.log(`[zkapp:commit-next-batch] compiling lean settlement contract before batch ${batchId}...`);
+      await ShadowBookSettlementZkApp.compile();
+    })();
+  }
+  await leanCompilePromise;
+}
+
+export async function commitNextPendingBatch() {
   const graphql = requireEnv('ZEKO_GRAPHQL');
   const txFee = UInt64.from(readOptionalEnv('TX_FEE', '100000000'));
+  const usePrivateStateProof = parseBoolEnv('ZKAPP_COMMIT_USE_PROOF', false);
   const requireCachedProof = parseBoolEnv('REQUIRE_CACHED_PRIVATE_STATE_PROOF', false);
   const allowInlineProving = parseBoolEnv('ALLOW_INLINE_PRIVATE_STATE_PROVING', !requireCachedProof);
   const batchPath = readOptionalEnv(
@@ -114,55 +142,64 @@ async function main() {
   Mina.setActiveInstance(network);
 
   await fetchAccount({ publicKey: zkappAddress });
-  const zkapp = new ShadowBookSettlementZkApp(zkappAddress);
+  const leanZkapp = !usePrivateStateProof ? new ShadowBookSettlementZkApp(zkappAddress) : null;
+  const advancedZkapp = usePrivateStateProof ? new ShadowBookSettlementAdvancedZkApp(zkappAddress) : null;
+  const zkapp = advancedZkapp ?? leanZkapp;
+  if (!zkapp) {
+    throw new Error('failed to initialize settlement zkapp');
+  }
   const currentSettlementRoot = zkapp.settlementRoot.get();
-  const currentNoteRoot = zkapp.noteRoot.get();
-  const currentNullifierRoot = zkapp.nullifierRoot.get();
   const currentOnchainBatchId = zkapp.lastBatchId.get();
   const nextOnchainBatchId = currentOnchainBatchId.add(UInt64.from(1));
+  const currentNoteRoot = zkapp.noteRoot.get();
+  const currentNullifierRoot = zkapp.nullifierRoot.get();
+  const noteRoot = hashHexToField(String(pending.noteRootHash || pending.batchHash));
+  const nullifierRoot = hashHexToField(String(pending.nullifierRootHash || pending.batchHash));
 
-  const proofInputs = await buildPendingPrivateStateProofInputs({
-    prevRoots: {
-      noteRoot: currentNoteRoot,
-      nullifierRoot: currentNullifierRoot,
-      settlementRoot: currentSettlementRoot
-    }
-  });
-  if (!proofInputs || proofInputs.pending.batchId !== pending.batchId) {
-    throw new Error(`private-state proof inputs unavailable for pending batch ${pending.batchId}`);
-  }
-  const noteRoot = proofInputs.nextRoots.noteRoot;
-  const nullifierRoot = proofInputs.nextRoots.nullifierRoot;
+  await ensureCompiled(pending.batchId, usePrivateStateProof);
 
-  console.log(`[zkapp:commit-next-batch] compiling contract for batch ${pending.batchId}...`);
-  await ShadowBookSettlementZkApp.compile();
-
-  let proof: PrivateStateTransitionProof;
-  let proofSource = 'cached';
-  const cached = await loadCachedProofArtifact(pending, proofInputs);
-  if (cached) {
-    console.log(`[zkapp:commit-next-batch] using cached private-state proof ${cached.proofPath} for batch ${pending.batchId}`);
-    proof = cached.proof;
-  } else {
-    if (requireCachedProof && !allowInlineProving) {
-      throw new Error(`cached private-state proof is required for batch ${pending.batchId}`);
-    }
-    if (!allowInlineProving) {
-      throw new Error(`inline private-state proving is disabled for batch ${pending.batchId}`);
-    }
-    proofSource = 'inline';
-    console.log(`[zkapp:commit-next-batch] proving private-state transition inline for batch ${pending.batchId}...`);
+  let proof: PrivateStateTransitionProof | null = null;
+  let proofSource: string | null = null;
+  let proofTransitionHash: string | null = null;
+  if (usePrivateStateProof) {
     await compilePrivateStateTransitionProgram();
-    const proofResult = await PrivateStateTransitionProgram.proveBatch(proofInputs.publicInput, proofInputs.batchWitness);
-    proof = proofResult.proof;
-  }
+    const proofInputs = await buildPendingPrivateStateProofInputs({
+      prevRoots: {
+        noteRoot: currentNoteRoot,
+        nullifierRoot: currentNullifierRoot,
+        settlementRoot: currentSettlementRoot
+      }
+    });
+    if (!proofInputs || proofInputs.pending.batchId !== pending.batchId) {
+      throw new Error(`private-state proof inputs unavailable for pending batch ${pending.batchId}`);
+    }
 
-  proof.publicInput.batchHash.assertEquals(batchHash);
-  proof.publicInput.prevRoots.noteRoot.assertEquals(currentNoteRoot);
-  proof.publicInput.prevRoots.nullifierRoot.assertEquals(currentNullifierRoot);
-  proof.publicOutput.nextRoots.noteRoot.assertEquals(noteRoot);
-  proof.publicOutput.nextRoots.nullifierRoot.assertEquals(nullifierRoot);
-  proof.publicInput.transitionHash.assertEquals(proofInputs.transitionHash);
+    const cached = await loadCachedProofArtifact(pending, proofInputs);
+    proofSource = 'cached';
+    if (cached) {
+      console.log(`[zkapp:commit-next-batch] using cached private-state proof ${cached.proofPath} for batch ${pending.batchId}`);
+      proof = cached.proof;
+    } else {
+      if (requireCachedProof && !allowInlineProving) {
+        throw new Error(`cached private-state proof is required for batch ${pending.batchId}`);
+      }
+      if (!allowInlineProving) {
+        throw new Error(`inline private-state proving is disabled for batch ${pending.batchId}`);
+      }
+      proofSource = 'inline';
+      console.log(`[zkapp:commit-next-batch] proving private-state transition inline for batch ${pending.batchId}...`);
+      const proofResult = await PrivateStateTransitionProgram.proveBatch(proofInputs.publicInput, proofInputs.batchWitness);
+      proof = proofResult.proof;
+    }
+
+    proof.publicInput.batchHash.assertEquals(batchHash);
+    proof.publicInput.prevRoots.noteRoot.assertEquals(currentNoteRoot);
+    proof.publicInput.prevRoots.nullifierRoot.assertEquals(currentNullifierRoot);
+    proof.publicOutput.nextRoots.noteRoot.assertEquals(proofInputs.nextRoots.noteRoot);
+    proof.publicOutput.nextRoots.nullifierRoot.assertEquals(proofInputs.nextRoots.nullifierRoot);
+    proof.publicInput.transitionHash.assertEquals(proofInputs.transitionHash);
+    proofTransitionHash = proof.publicInput.transitionHash.toString();
+  }
 
   const tx = await Mina.transaction(
     {
@@ -170,15 +207,28 @@ async function main() {
       fee: txFee
     },
     async () => {
-      await zkapp.commitBatchWithProof(
-        nextOnchainBatchId,
-        batchHash,
-        bookRoot,
-        noteRoot,
-        nullifierRoot,
-        sequencingRoot,
-        proof
-      );
+      if (advancedZkapp && proof) {
+        await advancedZkapp.commitBatchWithProof(
+          nextOnchainBatchId,
+          batchHash,
+          bookRoot,
+          noteRoot,
+          nullifierRoot,
+          sequencingRoot,
+          proof
+        );
+      } else if (leanZkapp) {
+        await leanZkapp.commitBatch(
+          nextOnchainBatchId,
+          batchHash,
+          bookRoot,
+          noteRoot,
+          nullifierRoot,
+          sequencingRoot
+        );
+      } else {
+        throw new Error(`missing settlement zkapp instance for batch ${pending.batchId}`);
+      }
     }
   );
 
@@ -194,30 +244,33 @@ async function main() {
   }
   await saveBatchFile(batchPath, batchFile);
 
-  console.log(
-    JSON.stringify(
-      {
-        ok: true,
-        localBatchId: pending.batchId,
-        onchainBatchId: nextOnchainBatchId.toString(),
-        batchHash: pending.batchHash,
-        bookRootHash: pending.bookRootHash || null,
-        noteRootHash: noteRoot.toString(),
-        nullifierRootHash: nullifierRoot.toString(),
-        sequencingRootHash: pending.sequencingRootHash || null,
-        privateStateTransitionHash: pending.privateStateTransitionHash || null,
-        proofTransitionHash: proof.publicInput.transitionHash.toString(),
-        proofSource,
-        txHash: sent.hash,
-        status: sent.status
-      },
-      null,
-      2
-    )
-  );
+  return {
+    ok: true,
+    localBatchId: pending.batchId,
+    onchainBatchId: nextOnchainBatchId.toString(),
+    batchHash: pending.batchHash,
+    bookRootHash: pending.bookRootHash || null,
+    noteRootHash: noteRoot.toString(),
+    nullifierRootHash: nullifierRoot.toString(),
+    sequencingRootHash: pending.sequencingRootHash || null,
+    privateStateTransitionHash: pending.privateStateTransitionHash || null,
+    proofTransitionHash,
+    proofSource,
+    commitMode: usePrivateStateProof ? 'verified-private-state' : 'lean-anchor',
+    txHash: sent.hash,
+    status: sent.status
+  };
 }
 
-main().catch((error) => {
-  console.error('[zkapp:commit-next-batch] failed', error);
-  process.exit(1);
-});
+async function main() {
+  const result = await commitNextPendingBatch();
+  console.log(JSON.stringify(result, null, 2));
+}
+
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isMain) {
+  main().catch((error) => {
+    console.error('[zkapp:commit-next-batch] failed', error);
+    process.exit(1);
+  });
+}
