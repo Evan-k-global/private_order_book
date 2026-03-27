@@ -1758,6 +1758,7 @@ function logActivity(accountId, type, details = {}) {
     createdAtUnixMs: now()
   });
   if (activityEvents.length > 5000) activityEvents.pop();
+  queueEngineStatePersist();
 }
 
 function computeSettlementBatchHash(fills) {
@@ -2092,6 +2093,7 @@ function engineStateSnapshot() {
     savedAtUnixMs: now(),
     openOrders: openOrdersSnapshot(),
     publicTape: publicTape.slice(0, 1000),
+    activityEvents: activityEvents.slice(0, 5000),
     accounts: Object.fromEntries(accounts.entries()),
     participantWallets: Object.fromEntries(participantWallets.entries()),
     notes: Array.from(notes.values()),
@@ -2127,6 +2129,7 @@ async function loadEngineState() {
     const loadedWallets = state.participantWallets && typeof state.participantWallets === 'object' ? state.participantWallets : {};
     const loadedOrders = Array.isArray(state.openOrders) ? state.openOrders : [];
     const loadedPublicTape = Array.isArray(state.publicTape) ? state.publicTape : [];
+    const loadedActivityEvents = Array.isArray(state.activityEvents) ? state.activityEvents : [];
     const loadedNotes = Array.isArray(state.notes) ? state.notes : [];
     const loadedSpentNullifiers = Array.isArray(state.spentNullifiers) ? state.spentNullifiers : [];
     const loadedSequencingReceipts = Array.isArray(state.sequencingReceipts) ? state.sequencingReceipts : [];
@@ -2199,6 +2202,11 @@ async function loadEngineState() {
     for (const fill of loadedPublicTape) {
       if (!fill || typeof fill.tradeId !== 'string') continue;
       publicTape.push(fill);
+    }
+    activityEvents.length = 0;
+    for (const event of loadedActivityEvents) {
+      if (!event || typeof event.accountId !== 'string' || typeof event.type !== 'string') continue;
+      activityEvents.push(event);
     }
     for (const order of loadedOrders) {
       if (!order || !order.id || !order.pair) continue;
