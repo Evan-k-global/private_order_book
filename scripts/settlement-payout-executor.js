@@ -278,6 +278,7 @@ async function main() {
             await fungibleTokenCompilePromise;
             await fetchAccount({ publicKey: feePayerPub });
             await fetchAccount({ publicKey: operatorPub });
+            await fetchAccount({ publicKey: operatorPub, tokenId });
             const receiverNeedsTokenAccount = !(await doesOnchainTokenAccountExist(wallet, tokenId58));
             const builtTx = await Mina.transaction(
               {
