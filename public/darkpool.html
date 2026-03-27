@@ -1911,11 +1911,22 @@
           amount: Number(document.getElementById('noteAmount').value || 0),
           txHash: options.txHash || document.getElementById('noteDepositTxHash').value.trim()
         };
-        const attempts = Number.isFinite(Number(options.attempts)) ? Number(options.attempts) : 6;
-        const delayMs = Number.isFinite(Number(options.delayMs)) ? Number(options.delayMs) : 2500;
+        const attempts = Number.isFinite(Number(options.attempts)) ? Number(options.attempts) : 20;
+        const delayMs = Number.isFinite(Number(options.delayMs)) ? Number(options.delayMs) : 800;
+        const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
         let lastError = null;
         for (let i = 0; i < attempts; i += 1) {
           try {
+            if (onProgress) {
+              onProgress({
+                phase: 'confirming',
+                attempt: i + 1,
+                attempts,
+                txHash: payload.txHash || '',
+                wallet: payload.wallet,
+                asset: payload.asset
+              });
+            }
             const result = await sdk.depositAuto(payload);
             if (result.note?.note) {
               document.getElementById('noteInput').value = result.note.note;
@@ -1932,7 +1943,22 @@
           } catch (error) {
             lastError = error;
             if (i < attempts - 1) {
-              await sleep(delayMs);
+              if (onProgress) {
+                onProgress({
+                  phase: 'retrying',
+                  attempt: i + 1,
+                  attempts,
+                  txHash: payload.txHash || '',
+                  wallet: payload.wallet,
+                  asset: payload.asset,
+                  error: error instanceof Error ? error.message : String(error)
+                });
+              }
+              const waitMs =
+                i < 5 ? delayMs :
+                i < 12 ? Math.max(delayMs, 1200) :
+                Math.max(delayMs, 1800);
+              await sleep(waitMs);
             }
           }
         }
@@ -3566,20 +3592,48 @@
       };
 
       document.getElementById('sendDepositTxBtn').onclick = async () => {
+        const asset = String(document.getElementById('noteAsset')?.value || '').trim() || 'asset';
         try {
+          setDepositBusyState(true, asset.toUpperCase() === 'TMINA' ? 'wallet' : 'building');
+          setText('vaultOut', {
+            ok: true,
+            pending: true,
+            message:
+              asset.toUpperCase() === 'TMINA'
+                ? `Preparing native ${asset} deposit request in wallet.`
+                : `Building ${asset} token deposit transaction. This can take a few seconds on first load.`,
+            asset
+          });
           const result = await sendDepositTxWithWallet();
+          setDepositBusyState(true, 'confirming');
           if (result.txHash) document.getElementById('noteDepositTxHash').value = result.txHash;
           setText('vaultOut', {
             ok: true,
             message: result.txHash
-              ? 'Deposit tx sent from wallet. Waiting for inclusion and auto-minting note.'
+              ? 'Deposit tx signed and submitted. Waiting for on-chain inclusion before minting the privacy note.'
               : 'Transfer request submitted in wallet. Waiting for tx hash before auto-mint.',
             method: result.method,
             txHash: result.txHash || null,
             response: result.response
           });
           if (result.txHash) {
-            const minted = await autoMintNoteFromLatestDeposit({ txHash: result.txHash });
+            const minted = await autoMintNoteFromLatestDeposit({
+              txHash: result.txHash,
+              onProgress(progress) {
+                setDepositBusyState(true, progress?.phase === 'confirming' ? 'confirming' : 'minting');
+                setText('vaultOut', {
+                  ok: true,
+                  pending: true,
+                  message:
+                    progress?.phase === 'retrying'
+                      ? `Deposit tx submitted. Waiting for chain inclusion before note mint (${progress.attempt}/${progress.attempts}).`
+                      : `Deposit tx submitted. Confirming on-chain before note mint (${progress.attempt}/${progress.attempts}).`,
+                  txHash: progress?.txHash || result.txHash || null,
+                  asset: progress?.asset || asset,
+                  lastError: progress?.error || null
+                });
+              }
+            });
             setText('vaultOut', {
               ok: true,
               message: 'Deposit confirmed and privacy note minted.',
@@ -3591,6 +3645,8 @@
           }
         } catch (e) {
           setText('vaultOut', String(e));
+        } finally {
+          setDepositBusyState(false);
         }
       };
 
@@ -3611,6 +3667,34 @@
           advancedBtn.disabled = Boolean(isBusy);
           advancedBtn.textContent = isBusy ? 'Withdrawing...' : 'Withdraw Notes to Wallet';
         }
+      }
+
+      function setDepositBusyState(isBusy, phase) {
+        const sendBtn = document.getElementById('sendDepositTxBtn');
+        if (!sendBtn) return;
+        if (!isBusy) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = 'Deposit Funds & Mint Notes';
+          return;
+        }
+        sendBtn.disabled = true;
+        if (phase === 'building') {
+          sendBtn.textContent = 'Building Deposit...';
+          return;
+        }
+        if (phase === 'wallet') {
+          sendBtn.textContent = 'Awaiting Wallet...';
+          return;
+        }
+        if (phase === 'minting') {
+          sendBtn.textContent = 'Minting Notes...';
+          return;
+        }
+        if (phase === 'confirming') {
+          sendBtn.textContent = 'Confirming On-Chain...';
+          return;
+        }
+        sendBtn.textContent = 'Processing Deposit...';
       }
 
       async function runWithdrawNotesFlow() {

@@ -41,6 +41,7 @@ Plus your existing chain / app secrets:
 - `ORDER_RECEIPT_SECRET`
 - `MAKER_API_KEY`
 - `OPERATOR_PANEL_ADMIN_KEY`
+- `TOKEN_CONTRACT_ADDRESSES_JSON`
 - `EARLY_ACCESS_GATE_ENABLED` and `EARLY_ACCESS_CODES` if you want the landing-page invite gate enabled
 - any DA relay envs you actually use
 
