@@ -44,6 +44,14 @@ const ASSET_DECIMALS = (() => {
   }
 })();
 let fungibleTokenCompilePromise = null;
+const PAYOUT_TX_WAIT_MAX_ATTEMPTS = Math.max(
+  1,
+  Number.parseInt(process.env.PAYOUT_TX_WAIT_MAX_ATTEMPTS || '30', 10) || 30
+);
+const PAYOUT_TX_WAIT_INTERVAL_MS = Math.max(
+  250,
+  Number.parseInt(process.env.PAYOUT_TX_WAIT_INTERVAL_MS || '1000', 10) || 1000
+);
 
 async function request(pathname, options = {}) {
   const res = await fetch(`${API_BASE}${pathname}`, {
@@ -54,6 +62,10 @@ async function request(pathname, options = {}) {
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || `request failed: ${pathname}`);
   return json;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function readStdinJson() {
@@ -106,6 +118,61 @@ async function graphqlRequest(query, variables = {}) {
     );
   }
   return json.data || {};
+}
+
+async function readAccountNonce(publicKey) {
+  try {
+    const result = await fetchAccount({ publicKey });
+    if (result.error) return null;
+    const nonceLike = result?.account?.nonce;
+    if (nonceLike && typeof nonceLike.toBigInt === 'function') return nonceLike.toBigInt();
+    if (nonceLike && typeof nonceLike.toString === 'function') return BigInt(nonceLike.toString());
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function waitForNonceAtLeast(publicKey, minimumNonce, attempts = 30, intervalMs = 1000) {
+  for (let i = 0; i < attempts; i += 1) {
+    const nonce = await readAccountNonce(publicKey);
+    if (nonce !== null && nonce >= minimumNonce) return nonce;
+    await sleep(intervalMs);
+  }
+  return null;
+}
+
+async function waitForPayoutInclusion(sent, feePayerPublicKey, expectedNonceAfterSend) {
+  if (sent && typeof sent.wait === 'function') {
+    try {
+      await sent.wait({
+        maxAttempts: PAYOUT_TX_WAIT_MAX_ATTEMPTS,
+        interval: PAYOUT_TX_WAIT_INTERVAL_MS
+      });
+      return;
+    } catch (error) {
+      const observedNonce = await waitForNonceAtLeast(
+        feePayerPublicKey,
+        expectedNonceAfterSend,
+        PAYOUT_TX_WAIT_MAX_ATTEMPTS,
+        PAYOUT_TX_WAIT_INTERVAL_MS
+      );
+      if (observedNonce !== null) return;
+      throw error;
+    }
+  }
+
+  const observedNonce = await waitForNonceAtLeast(
+    feePayerPublicKey,
+    expectedNonceAfterSend,
+    PAYOUT_TX_WAIT_MAX_ATTEMPTS,
+    PAYOUT_TX_WAIT_INTERVAL_MS
+  );
+  if (observedNonce === null) {
+    throw new Error(
+      `payout transaction was sent but fee payer nonce did not reach ${expectedNonceAfterSend.toString()}`
+    );
+  }
 }
 
 async function doesOnchainTokenAccountExist(publicKey, tokenId) {
@@ -182,12 +249,18 @@ async function main() {
     const tokenId = TokenId.fromBase58(tokenId58);
     const to = PublicKey.fromBase58(wallet);
     const rawAmount = decimalToRawUInt64(amount, decimals);
+    const currentFeePayerNonce = await readAccountNonce(feePayerPub);
+    if (currentFeePayerNonce === null) {
+      throw new Error(`unable to read fee payer nonce for ${feePayerPub.toBase58()}`);
+    }
+    const nextFeePayerNonce = currentFeePayerNonce + 1n;
     const tx =
       asset === 'TMINA'
         ? await Mina.transaction(
             {
               sender: feePayerPub,
-              fee: UInt64.from(TX_FEE)
+              fee: UInt64.from(TX_FEE),
+              nonce: Number(currentFeePayerNonce)
             },
             async () => {
               const payer = AccountUpdate.createSigned(operatorPub);
@@ -203,12 +276,14 @@ async function main() {
             const token = new FungibleToken(tokenAddress);
             if (!fungibleTokenCompilePromise) fungibleTokenCompilePromise = FungibleToken.compile();
             await fungibleTokenCompilePromise;
+            await fetchAccount({ publicKey: feePayerPub });
             await fetchAccount({ publicKey: operatorPub });
             const receiverNeedsTokenAccount = !(await doesOnchainTokenAccountExist(wallet, tokenId58));
             const builtTx = await Mina.transaction(
               {
                 sender: feePayerPub,
-                fee: UInt64.from(TX_FEE)
+                fee: UInt64.from(TX_FEE),
+                nonce: Number(currentFeePayerNonce)
               },
               async () => {
                 if (receiverNeedsTokenAccount) {
@@ -230,6 +305,7 @@ async function main() {
     tx.sign([feePayerKey, operatorKey]);
     const sent = await tx.send();
     if (!sent?.hash) throw new Error(`missing tx hash for payout to ${wallet} token ${tokenId58}`);
+    await waitForPayoutInclusion(sent, feePayerPub, nextFeePayerNonce);
     payoutTxs.push({ wallet, tokenId: tokenId58, txHash: sent.hash });
   }
 
