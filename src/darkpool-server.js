@@ -2761,6 +2761,7 @@ function recordFill(pairSymbol, pairConfig, buy, sell, qty, price, aggressorOrde
   const isBuyTaker = aggressorOrderId === buy.id;
   const isSellTaker = aggressorOrderId === sell.id;
   const takerOrder = isBuyTaker ? buy : isSellTaker ? sell : null;
+  const initiatorSide = isBuyTaker ? 'BUY' : isSellTaker ? 'SELL' : null;
 
   let buyReceiveBase = qty;
   let sellReceiveQuote = quoteNotional;
@@ -2807,6 +2808,7 @@ function recordFill(pairSymbol, pairConfig, buy, sell, qty, price, aggressorOrde
   logActivity(buy.participant, 'trade_fill', {
     pair: pairSymbol,
     side: 'BUY',
+    initiatorSide,
     price,
     quantity: qty,
     counterpartyCommitment: fill.sellCommitment,
@@ -2818,6 +2820,7 @@ function recordFill(pairSymbol, pairConfig, buy, sell, qty, price, aggressorOrde
   logActivity(sell.participant, 'trade_fill', {
     pair: pairSymbol,
     side: 'SELL',
+    initiatorSide,
     price,
     quantity: qty,
     counterpartyCommitment: fill.buyCommitment,

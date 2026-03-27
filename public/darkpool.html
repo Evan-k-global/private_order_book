@@ -8,16 +8,16 @@
     <style>
       :root {
         --bg: #06090f;
-        --panel: #071324;
-        --panel-alt: #09182b;
-        --line: #29425f;
+        --panel: #061120;
+        --panel-alt: #071525;
+        --line: #273f59;
         --ink: #d9e7f6;
         --muted: #7f93aa;
         --green: #2cd889;
         --red: #ff6b7f;
         --cyan: #4ec7ff;
         --amber: #f2c572;
-        --brand-surface: rgba(7, 19, 36, 0.96);
+        --brand-surface: rgba(6, 17, 32, 0.97);
         --shell-max: 1580px;
         --shell-gutter: 16px;
         --header-offset: 104px;
@@ -817,32 +817,79 @@
         min-width: 122px;
       }
       .hd-tools .compact-input {
-        min-width: 48px;
+        min-width: 44px;
       }
       .hd-tools .compact-wallet {
-        min-width: 148px;
+        min-width: 172px;
       }
       .activity-toolbar-label {
         font-size: 11px;
         color: #8ba5bf;
-        margin-right: -2px;
+        margin-right: 2px;
+      }
+      .activity-refresh-btn {
+        width: auto;
+        min-width: 0;
+        padding: 6px 9px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        line-height: 1;
+      }
+      .activity-refresh-btn .refresh-icon {
+        font-size: 12px;
+        color: #8fd7ff;
       }
       .activity-auto-toggle {
         display: inline-flex;
         align-items: center;
-        gap: 4px;
+        gap: 6px;
         border: 1px solid #244059;
         border-radius: 999px;
-        padding: 4px 7px;
-        background: #0b1420;
+        padding: 4px 8px 4px 6px;
+        background: #0a1726;
         color: #9bc0df;
         font-size: 11px;
+        line-height: 1;
+        cursor: pointer;
       }
       .activity-auto-toggle input {
-        width: 14px;
-        height: 14px;
-        margin: 0;
-        accent-color: #2ec8ff;
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .activity-auto-toggle .toggle-track {
+        position: relative;
+        width: 26px;
+        height: 15px;
+        border-radius: 999px;
+        background: #102235;
+        border: 1px solid #29506f;
+        transition: background 120ms ease, border-color 120ms ease;
+        flex: 0 0 auto;
+      }
+      .activity-auto-toggle .toggle-track::after {
+        content: "";
+        position: absolute;
+        top: 1px;
+        left: 1px;
+        width: 11px;
+        height: 11px;
+        border-radius: 999px;
+        background: #8fa8be;
+        transition: transform 120ms ease, background 120ms ease;
+      }
+      .activity-auto-toggle input:checked + .toggle-track {
+        background: linear-gradient(120deg, rgba(42, 140, 255, 0.28), rgba(37, 208, 181, 0.3));
+        border-color: #34a7d8;
+      }
+      .activity-auto-toggle input:checked + .toggle-track::after {
+        transform: translateX(11px);
+        background: #d8f7ff;
+      }
+      .activity-auto-toggle .toggle-label {
+        color: #a8c6df;
       }
       .order-primary-grid {
         display: grid;
@@ -1301,10 +1348,11 @@
             <input id="activityWallet" class="compact-wallet" value="B62qdemo_wallet_alpha" />
             <span class="activity-toolbar-label">Rows</span>
             <input id="activityLimit" class="compact-input" type="number" value="150" />
-            <button type="button" class="ghost" id="refreshActivityBtn">Refresh</button>
+            <button type="button" class="ghost activity-refresh-btn" id="refreshActivityBtn"><span class="refresh-icon">↻</span><span>Refresh</span></button>
             <label class="activity-auto-toggle" for="activityAuto">
               <input id="activityAuto" type="checkbox" />
-              <span>Auto</span>
+              <span class="toggle-track" aria-hidden="true"></span>
+              <span class="toggle-label">Auto</span>
             </label>
           </div>
         </div>
@@ -2479,11 +2527,51 @@
         return fmtDisplayNumber(v);
       }
 
+      function collapseActivityEvents(events) {
+        const collapsed = [];
+        const selfFillByTradeId = new Map();
+        for (const ev of Array.isArray(events) ? events : []) {
+          if (ev?.type === 'trade_fill') {
+            const tradeId = String(ev?.details?.tradeId || '').trim();
+            const side = String(ev?.details?.side || '').trim().toUpperCase();
+            if (tradeId && (side === 'BUY' || side === 'SELL')) {
+              const existingIndex = selfFillByTradeId.get(tradeId);
+              if (existingIndex !== undefined) {
+                const existing = collapsed[existingIndex];
+                const existingSide = String(existing?.details?.side || '').trim().toUpperCase();
+                const preferredSide =
+                  String(ev?.details?.initiatorSide || existing?.details?.initiatorSide || existingSide || side)
+                    .trim()
+                    .toUpperCase();
+                if ((existingSide === 'BUY' && side === 'SELL') || (existingSide === 'SELL' && side === 'BUY')) {
+                  collapsed[existingIndex] = {
+                    ...existing,
+                    details: {
+                      ...(existing.details || {}),
+                      side: preferredSide === 'SELL' ? 'SELL' : 'BUY',
+                      selfMatched: true,
+                      initiatorSide: preferredSide
+                    }
+                  };
+                  selfFillByTradeId.delete(tradeId);
+                  continue;
+                }
+              } else {
+                selfFillByTradeId.set(tradeId, collapsed.length);
+              }
+            }
+          }
+          collapsed.push(ev);
+        }
+        return collapsed;
+      }
+
       function renderActivity(events, openOrders) {
         const root = document.getElementById('activityRows');
         root.innerHTML = '';
+        const collapsedEvents = collapseActivityEvents(events);
         const activeOrders = Array.isArray(openOrders) ? openOrders : [];
-        if ((!events || events.length === 0) && activeOrders.length === 0) {
+        if ((!collapsedEvents || collapsedEvents.length === 0) && activeOrders.length === 0) {
           const row = document.createElement('div');
           row.className = 'activity-row';
           row.innerHTML = `<div>-</div><div>No activity</div><div>-</div><div>-</div><div>-</div><div>-</div><div>Submit orders to populate history.</div>`;
@@ -2505,7 +2593,7 @@
           `;
           root.appendChild(row);
         }
-        for (const ev of events) {
+        for (const ev of collapsedEvents) {
           const row = document.createElement('div');
           row.className = 'activity-row';
           const d = ev.details || {};
@@ -2527,7 +2615,10 @@
           const qty = d.quantity ?? d.amount ?? null;
           let note = '-';
           if (ev.type === 'order_submitted') note = `${d.orderType || 'LIMIT'} ${d.tif || ''} ${d.sequenceNumber ? `· SEQ ${d.sequenceNumber}` : ''}`.trim();
-          else if (ev.type === 'trade_fill') note = d.tradeId ? shortHash(d.tradeId) : 'matched';
+          else if (ev.type === 'trade_fill') {
+            note = d.tradeId ? shortHash(d.tradeId) : 'matched';
+            if (d.selfMatched) note += ' · self-match';
+          }
           else if (ev.type === 'order_canceled') note = d.orderId ? shortHash(d.orderId) : 'canceled';
           else if (ev.type === 'balance_synced_onchain') note = d.wallet ? shortHash(d.wallet) : 'synced';
           else if (ev.type === 'note_withdrawn') note = d.recipient ? shortHash(d.recipient) : 'withdrawn';
