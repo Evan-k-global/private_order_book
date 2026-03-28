@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { AccountUpdate, fetchAccount, Mina, PrivateKey, PublicKey, UInt64 } from 'o1js';
 import { ShadowBookSettlementZkApp } from './contract.js';
+import { ShadowBookSettlementAdvancedZkApp } from './advanced-contract.js';
 import { requireEnv, readOptionalEnv, hashStringToField } from './utils.js';
 
 function sleep(ms: number) {
@@ -76,6 +77,7 @@ async function waitForMarketConfigured(
 async function main() {
   const graphql = requireEnv('ZEKO_GRAPHQL');
   const txFee = UInt64.from(readOptionalEnv('TX_FEE', '2000000000'));
+  const useAdvanced = readOptionalEnv('ZKAPP_DEPLOY_USE_ADVANCED', 'false').toLowerCase() === 'true';
   const marketSymbol = readOptionalEnv('MARKET_SYMBOL', 'tETH/tZEKO');
   const baseTokenId = readOptionalEnv('BASE_TOKEN_ID', 'wpWnRKT383VPM2TWtBWs8R4i927SKUgzAycsSs3AyvyriGXyP2');
   const quoteTokenId = readOptionalEnv('QUOTE_TOKEN_ID', 'x3jovPY75iFmbZ5kTfxZmNmEQ6874mmBu3jufom1QsxMNqPx27');
@@ -92,10 +94,16 @@ async function main() {
   });
   Mina.setActiveInstance(network);
 
-  console.log('[zkapp:deploy] compiling contract...');
-  await ShadowBookSettlementZkApp.compile();
+  console.log(`[zkapp:deploy] compiling ${useAdvanced ? 'advanced' : 'lean'} contract...`);
+  if (useAdvanced) {
+    await ShadowBookSettlementAdvancedZkApp.compile();
+  } else {
+    await ShadowBookSettlementZkApp.compile();
+  }
 
-  const zkapp = new ShadowBookSettlementZkApp(zkappAddress);
+  const zkapp = useAdvanced
+    ? new ShadowBookSettlementAdvancedZkApp(zkappAddress)
+    : new ShadowBookSettlementZkApp(zkappAddress);
   const startingDeployerNonce = (await readAccountNonce(deployerPublicKey)) ?? 0n;
 
   const alreadyExists = await accountExists(zkappAddress);
@@ -176,6 +184,7 @@ async function main() {
         baseTokenId,
         quoteTokenId,
         operatorPublicKey: operator.toBase58(),
+        contractMode: useAdvanced ? 'advanced' : 'lean',
         deployTxHash: sentDeploy?.hash ?? null,
         deployStatus: sentDeploy?.status ?? 'unknown (timeout but account became visible)',
         configureTxHash: sentConfigure?.hash ?? null,

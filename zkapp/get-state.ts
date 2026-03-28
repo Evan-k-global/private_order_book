@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { fetchAccount, Mina, PublicKey } from 'o1js';
 import { ShadowBookSettlementZkApp } from './contract.js';
+import { ShadowBookSettlementAdvancedZkApp } from './advanced-contract.js';
 import { readOptionalEnv, requireEnv } from './utils.js';
 
 function sleep(ms: number) {
@@ -10,6 +11,7 @@ function sleep(ms: number) {
 async function main() {
   const graphql = requireEnv('ZEKO_GRAPHQL');
   const zkappAddress = PublicKey.fromBase58(requireEnv('ZKAPP_PUBLIC_KEY'));
+  const useAdvanced = readOptionalEnv('ZKAPP_GET_STATE_USE_ADVANCED', 'false').toLowerCase() === 'true';
   const attempts = Number.parseInt(readOptionalEnv('GET_STATE_RETRY_ATTEMPTS', '20'), 10);
   const intervalMs = Number.parseInt(readOptionalEnv('GET_STATE_RETRY_INTERVAL_MS', '3000'), 10);
 
@@ -36,7 +38,9 @@ async function main() {
     );
   }
 
-  const zkapp = new ShadowBookSettlementZkApp(zkappAddress);
+  const zkapp = useAdvanced
+    ? new ShadowBookSettlementAdvancedZkApp(zkappAddress)
+    : new ShadowBookSettlementZkApp(zkappAddress);
   const marketConfigHash = zkapp.marketConfigHash.get();
   const settlementRoot = zkapp.settlementRoot.get();
   const bookRoot = zkapp.bookRoot.get();
@@ -50,6 +54,7 @@ async function main() {
       {
         ok: true,
         zkappAddress: zkappAddress.toBase58(),
+        contractMode: useAdvanced ? 'advanced' : 'lean',
         marketConfigured: !marketConfigHash.equals(0).toBoolean(),
         marketConfigHash: marketConfigHash.toString(),
         settlementRoot: settlementRoot.toString(),

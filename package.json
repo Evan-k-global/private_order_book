@@ -20,9 +20,12 @@
     "build:zkapp": "tsc -p tsconfig.zkapp.json",
     "zkapp:preflight": "node scripts/zkapp-preflight.js",
     "zkapp:deploy": "pnpm build:zkapp && NODE_OPTIONS=\"${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=${ZKAPP_DEPLOY_MAX_OLD_SPACE_MB:-8192}\" node --enable-source-maps dist-zkapp/deploy.js",
+    "zkapp:deploy:advanced": "pnpm build:zkapp && ZKAPP_DEPLOY_USE_ADVANCED=true NODE_OPTIONS=\"${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=${ZKAPP_DEPLOY_MAX_OLD_SPACE_MB:-12288}\" node --enable-source-maps dist-zkapp/deploy.js",
     "zkapp:bootstrap": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/bootstrap-state.js",
     "zkapp:commit-next": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/commit-next-batch.js",
+    "zkapp:commit-next:advanced": "pnpm build:zkapp && ZKAPP_COMMIT_USE_PROOF=true REQUIRE_CACHED_PRIVATE_STATE_PROOF=true ALLOW_INLINE_PRIVATE_STATE_PROVING=false NODE_OPTIONS=\"${NODE_OPTIONS:+$NODE_OPTIONS }--max-old-space-size=${ZKAPP_COMMIT_MAX_OLD_SPACE_MB:-12288}\" node --enable-source-maps dist-zkapp/commit-next-batch.js",
     "zkapp:get-state": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/get-state.js",
+    "zkapp:get-state:advanced": "pnpm build:zkapp && ZKAPP_GET_STATE_USE_ADVANCED=true node --enable-source-maps dist-zkapp/get-state.js",
     "zkapp:build-private-state-witness": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/build-private-state-witness.js",
     "zkapp:prove-private-state": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/prove-private-state-batch.js",
     "zkapp:inspect-private-state-merkle": "pnpm build:zkapp && node --enable-source-maps dist-zkapp/inspect-private-state-merkle.js"
