@@ -11,6 +11,7 @@
 - `GET /api/darkpool/activity?wallet=...&limit=150`
 - `GET /api/darkpool/status`
 - `GET /api/darkpool/fairness/audit?limit=200`
+- `GET /api/darkpool/frontends/fees?frontendId=...`
 
 ## Account / Balance APIs
 
@@ -91,4 +92,5 @@ Useful methods:
 Demo fee model:
 - taker fee: `TAKER_FEE_BPS`
 - frontend revenue share: `FRONTEND_FEE_SHARE_BPS`
-- remainder to protocol fee balances
+- protocol accrues the remainder
+- if `frontendId` is absent, the full fee accrues to protocol balances

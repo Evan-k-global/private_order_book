@@ -1761,14 +1761,16 @@ function setCorsHeaders(req, res) {
 }
 
 function accumulateFrontendFees({ frontendId, asset, feeAmount, quoteNotional, pair, tradeId }) {
-  if (!frontendId || !Number.isFinite(feeAmount) || feeAmount <= 1e-12) return;
-  const share = feeAmount * (FRONTEND_FEE_SHARE_BPS / 10000);
+  if (!Number.isFinite(feeAmount) || feeAmount <= 1e-12) return;
+  const normalizedFrontendId = frontendId ? normalizeFrontendId(frontendId) : null;
+  const share = normalizedFrontendId ? feeAmount * (FRONTEND_FEE_SHARE_BPS / 10000) : 0;
   const protocolShare = Math.max(0, feeAmount - share);
 
   protocolFeeBalances[asset] = Number(protocolFeeBalances[asset] || 0) + protocolShare;
+  if (!normalizedFrontendId || share <= 1e-12) return;
 
-  const existing = frontendFeeLedger.get(frontendId) || {
-    frontendId,
+  const existing = frontendFeeLedger.get(normalizedFrontendId) || {
+    frontendId: normalizedFrontendId,
     tradeCount: 0,
     routedVolumeQuote: 0,
     earningsByAsset: {},
@@ -1779,7 +1781,7 @@ function accumulateFrontendFees({ frontendId, asset, feeAmount, quoteNotional, p
   existing.earningsByAsset[asset] = Number(existing.earningsByAsset[asset] || 0) + share;
   existing.recentFills.unshift({ tradeId, pair, asset, feeAmount, frontendShare: share, createdAtUnixMs: now() });
   if (existing.recentFills.length > 100) existing.recentFills.pop();
-  frontendFeeLedger.set(frontendId, existing);
+  frontendFeeLedger.set(normalizedFrontendId, existing);
 }
 
 function getAccount(participant) {
