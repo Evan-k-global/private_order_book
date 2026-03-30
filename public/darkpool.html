@@ -820,10 +820,13 @@
         min-width: 122px;
       }
       .hd-tools .compact-input {
-        min-width: 44px;
+        width: 40px;
+        min-width: 40px;
+        padding-left: 7px;
+        padding-right: 7px;
       }
       .hd-tools .compact-wallet {
-        min-width: 172px;
+        min-width: 184px;
       }
       .activity-toolbar-label {
         font-size: 11px;
@@ -833,11 +836,11 @@
       .activity-refresh-btn {
         width: auto;
         min-width: 0;
-        padding: 6px 9px;
+        padding: 6px 8px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 5px;
+        gap: 4px;
         line-height: 1;
       }
       .activity-refresh-btn .refresh-icon {
@@ -1171,6 +1174,83 @@
         }
         .withdraw-row {
           grid-template-columns: 1fr 1fr;
+        }
+      }
+      @media (max-width: 640px) {
+        body {
+          overflow-x: hidden;
+        }
+        .app,
+        .vault-strip {
+          padding-left: 10px;
+          padding-right: 10px;
+          gap: 10px;
+        }
+        .card .hd {
+          padding: 9px 10px;
+        }
+        .card .bd {
+          padding: 10px;
+        }
+        .brandbar-inner {
+          padding-left: 10px;
+          padding-right: 10px;
+        }
+        .top-tabs {
+          gap: 6px;
+        }
+        .price-chart-card,
+        .order-book-card,
+        .activity-card {
+          height: auto;
+          min-height: 0;
+        }
+        .chart-topline {
+          grid-template-columns: 1fr;
+        }
+        .chart-statusbar {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          justify-content: stretch;
+        }
+        .chart-pill-stat.note {
+          grid-column: 1 / -1;
+        }
+        .chart-toolrail {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .hd-tools {
+          width: 100%;
+          gap: 6px;
+          justify-content: flex-start;
+        }
+        .hd-tools .compact-select {
+          min-width: 116px;
+        }
+        .hd-tools .compact-wallet {
+          min-width: 0;
+          flex: 1 1 100%;
+        }
+        .activity-refresh-btn {
+          padding-left: 7px;
+          padding-right: 7px;
+        }
+        .activity-refresh-btn span:last-child {
+          display: none;
+        }
+        .activity-table {
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+        }
+        .activity-head,
+        .activity-row {
+          min-width: 760px;
+        }
+        .book-grid {
+          grid-template-columns: 1fr;
+        }
+        .book-rows {
+          height: 220px;
         }
       }
     </style>
