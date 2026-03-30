@@ -3699,12 +3699,17 @@
           renderCurrentChart(latestChartCandles, latestChartTrades, latestChartMarket);
         }
       };
-      document.getElementById('ordType').onchange = () => updateOrderTypeUi();
+      document.getElementById('ordType').onchange = () => {
+        updateBookPrefillActionUi('');
+        updateOrderTypeUi();
+      };
       document.getElementById('ordVisibility').onchange = () => {
+        updateBookPrefillActionUi('');
         updateVisibilityHint();
       };
       document.getElementById('activityView').onchange = () => { refreshActivity().catch(() => {}); };
       document.getElementById('ordWallet').oninput = () => {
+        updateBookPrefillActionUi('');
         clearReplaceOrderState();
         refreshPretradeChecklist().catch(() => {});
         updateOperatorPanelState();
@@ -3712,12 +3717,23 @@
       document.getElementById('operatorAdminKey').oninput = () => {
         updateOperatorPanelState();
       };
-      document.getElementById('ordQty').oninput = () => { refreshPretradeChecklist().catch(() => {}); };
-      document.getElementById('ordPrice').oninput = () => { refreshPretradeChecklist().catch(() => {}); };
+      document.getElementById('ordQty').oninput = () => {
+        updateBookPrefillActionUi('');
+        refreshPretradeChecklist().catch(() => {});
+      };
+      document.getElementById('ordPrice').oninput = () => {
+        updateBookPrefillActionUi('');
+        refreshPretradeChecklist().catch(() => {});
+      };
       document.getElementById('ordTif').onchange = () => {
+        updateBookPrefillActionUi('');
         if (document.getElementById('ordType').value !== 'MARKET') {
           lastNonMarketTif = document.getElementById('ordTif').value || lastNonMarketTif || 'GTC';
         }
+        refreshPretradeChecklist().catch(() => {});
+      };
+      document.getElementById('ordFundingNote').oninput = () => {
+        updateBookPrefillActionUi('');
         refreshPretradeChecklist().catch(() => {});
       };
       document.getElementById('noteWallet').oninput = () => {

@@ -1,14 +1,16 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
+import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
+const require = createRequire(import.meta.url);
 
 const pairs = new Map([
   [
@@ -1575,7 +1577,9 @@ const usedOrderAuthNonces = new Map();
 
 async function getMinaSignerClient() {
   if (!minaSignerClientPromise) {
-    minaSignerClientPromise = import('o1js/dist/node/mina-signer/mina-signer.js').then((mod) => {
+    const o1jsEntry = require.resolve('o1js');
+    const signerPath = path.join(path.dirname(o1jsEntry), 'mina-signer', 'mina-signer.js');
+    minaSignerClientPromise = import(pathToFileURL(signerPath).href).then((mod) => {
       const Client = mod.default;
       const networkId = String(ZEKO_NETWORK_ID || 'testnet').trim().toLowerCase() === 'mainnet' ? 'mainnet' : 'testnet';
       return new Client({ network: networkId });
