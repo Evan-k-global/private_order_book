@@ -1596,7 +1596,14 @@ async function getO1jsRuntime() {
 }
 
 async function normalizeAuthorizationSignature(signatureLike) {
-  if (typeof signatureLike === 'string' && signatureLike.trim()) return signatureLike.trim();
+  if (typeof signatureLike === 'string' && signatureLike.trim()) {
+    const { Signature } = await getO1jsRuntime();
+    const parsed = Signature.fromBase58(signatureLike.trim());
+    return {
+      field: String(parsed.r?.toJSON?.() ?? parsed.r),
+      scalar: String(parsed.s?.toJSON?.() ?? parsed.s)
+    };
+  }
   if (!signatureLike || typeof signatureLike !== 'object') {
     throw new Error('order authorization signature must be present');
   }
@@ -1606,14 +1613,23 @@ async function normalizeAuthorizationSignature(signatureLike) {
     signatureLike.data?.signature ??
     signatureLike.data?.signedData ??
     signatureLike;
-  if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  if (typeof candidate === 'string' && candidate.trim()) {
+    const { Signature } = await getO1jsRuntime();
+    const parsed = Signature.fromBase58(candidate.trim());
+    return {
+      field: String(parsed.r?.toJSON?.() ?? parsed.r),
+      scalar: String(parsed.s?.toJSON?.() ?? parsed.s)
+    };
+  }
   const field = candidate?.field ?? candidate?.r ?? candidate?.R ?? null;
   const scalar = candidate?.scalar ?? candidate?.s ?? candidate?.S ?? null;
   if (field === null || field === undefined || scalar === null || scalar === undefined) {
     throw new Error('order authorization signature format is unsupported');
   }
-  const { Signature } = await getO1jsRuntime();
-  return Signature.fromValue({ r: String(field), s: String(scalar) }).toBase58();
+  return {
+    field: String(field),
+    scalar: String(scalar)
+  };
 }
 
 function pruneExpiredOrderAuthNonces(currentNow = now()) {
