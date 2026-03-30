@@ -1512,7 +1512,7 @@ function canonicalOperatorAuthorizationPayload(payload) {
   });
 }
 
-function validateOrderAuthorization({ wallet, market, side, orderType, timeInForce, limitPrice, quantity, fundingNoteHashes, visibility, frontendId, authorization }) {
+async function validateOrderAuthorization({ wallet, market, side, orderType, timeInForce, limitPrice, quantity, fundingNoteHashes, visibility, frontendId, authorization }) {
   if (!authorization || typeof authorization !== 'object') {
     throw new Error('wallet-signed order authorization is required');
   }
@@ -1541,24 +1541,37 @@ function validateOrderAuthorization({ wallet, market, side, orderType, timeInFor
   if (providedPayload !== expectedPayload) throw new Error('order authorization payload mismatch');
   const expiresAtUnixMs = Number.parseInt(String(authorization.expiresAtUnixMs || ''), 10);
   if (!Number.isFinite(expiresAtUnixMs)) throw new Error('order authorization expiry is invalid');
-  if (expiresAtUnixMs < now()) throw new Error('order authorization expired');
-  const signatureLike =
-    authorization.signature ||
-    authorization.signatureBase58 ||
-    authorization.signedData ||
-    authorization.rawSignature ||
+  const currentNow = now();
+  if (expiresAtUnixMs < currentNow) throw new Error('order authorization expired');
+  const nonce = requireString(authorization.nonce, 'orderAuthorization.nonce');
+  pruneExpiredOrderAuthNonces(currentNow);
+  if (usedOrderAuthNonces.has(nonce)) throw new Error('order authorization nonce already used');
+  const signature =
+    authorization.signature ??
+    authorization.signatureBase58 ??
+    authorization.rawSignature ??
     null;
-  if (!signatureLike) throw new Error('order authorization signature is missing');
+  if (signature === null || signature === undefined || signature === '' || typeof signature !== 'string') {
+    throw new Error('order authorization signature must be a non-empty string');
+  }
+  const signer = await getMinaSignerClient();
+  const isValid = signer.verifyMessage({
+    data: providedPayload,
+    signature,
+    publicKey: authWallet
+  });
+  if (!isValid) throw new Error('order authorization signature is invalid');
   return {
     wallet: authWallet,
     payload: providedPayload,
-    nonce: requireString(authorization.nonce, 'orderAuthorization.nonce'),
+    nonce,
     expiresAtUnixMs,
-    signature: signatureLike
+    signature
   };
 }
 
 let minaSignerClientPromise = null;
+const usedOrderAuthNonces = new Map();
 
 async function getMinaSignerClient() {
   if (!minaSignerClientPromise) {
@@ -1569,6 +1582,14 @@ async function getMinaSignerClient() {
     });
   }
   return minaSignerClientPromise;
+}
+
+function pruneExpiredOrderAuthNonces(currentNow = now()) {
+  for (const [nonce, expiresAtUnixMs] of usedOrderAuthNonces.entries()) {
+    if (!Number.isFinite(expiresAtUnixMs) || expiresAtUnixMs < currentNow) {
+      usedOrderAuthNonces.delete(nonce);
+    }
+  }
 }
 
 function pruneExpiredOperatorAuthNonces(currentNow = now()) {
@@ -4652,7 +4673,7 @@ async function main() {
           if (!lastSync || now() - lastSync > ONCHAIN_SYNC_TTL_MS) {
             throw new Error('on-chain balances are stale; call /api/darkpool/accounts/sync-onchain');
           }
-          validateOrderAuthorization({
+          const validatedOrderAuthorization = await validateOrderAuthorization({
             wallet: linkedWallet,
             market: pairConfig,
             side,
@@ -4687,6 +4708,7 @@ async function main() {
         const sequencingReceipt = createSequencingReceipt(order, participant);
 
         const settlementBatch = await enqueueSettlementBatch(participant, fills);
+        usedOrderAuthNonces.set(validatedOrderAuthorization.nonce, validatedOrderAuthorization.expiresAtUnixMs);
         writeJson(res, 200, {
           ok: true,
           order: sanitizeOrder(order),
@@ -4930,7 +4952,7 @@ async function main() {
           if (!lastSync || now() - lastSync > ONCHAIN_SYNC_TTL_MS) {
             throw new Error('on-chain balances are stale; call /api/darkpool/accounts/sync-onchain');
           }
-          validateOrderAuthorization({
+          const validatedOrderAuthorization = await validateOrderAuthorization({
             wallet: linkedWallet,
             market: pairConfig,
             side,
@@ -4972,6 +4994,7 @@ async function main() {
         const orderReceipt = createOrderReceipt(order, participant);
         const sequencingReceipt = createSequencingReceipt(order, participant);
         const settlementBatch = await enqueueSettlementBatch(participant, fills);
+        usedOrderAuthNonces.set(validatedOrderAuthorization.nonce, validatedOrderAuthorization.expiresAtUnixMs);
         logActivity(participant, 'order_replaced', {
           replacedOrderId: existingOrder.id,
           newOrderId: order.id,

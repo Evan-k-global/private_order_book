@@ -2249,15 +2249,22 @@
         const provider = window.mina;
         if (!provider) throw new Error('No Mina wallet provider found in browser');
         const attempts = [];
+        function normalizeSignedMessage(response, method) {
+          const signature = response?.signature || response?.signatureBase58 || response?.signedData || null;
+          if (typeof signature !== 'string' || !signature.trim()) {
+            throw new Error('Wallet signature was not completed');
+          }
+          return {
+            method,
+            publicKey: response?.publicKey || response?.address || wallet,
+            signature: signature.trim(),
+            raw: response
+          };
+        }
         if (typeof provider.signMessage === 'function') {
           try {
             const response = await provider.signMessage({ message });
-            return {
-              method: 'signMessage',
-              publicKey: response?.publicKey || wallet,
-              signature: response?.signature || response?.signatureBase58 || response?.signedData || response,
-              raw: response
-            };
+            return normalizeSignedMessage(response, 'signMessage');
           } catch (e) {
             attempts.push(`signMessage: ${String(e?.message || e)}`);
           }
@@ -2271,12 +2278,7 @@
           for (const variant of variants) {
             try {
               const response = await provider.request({ method: variant.method, params: variant.params });
-              return {
-                method: variant.method,
-                publicKey: response?.publicKey || response?.address || wallet,
-                signature: response?.signature || response?.signatureBase58 || response?.signedData || response,
-                raw: response
-              };
+              return normalizeSignedMessage(response, variant.method);
             } catch (e) {
               attempts.push(`${variant.method}: ${String(e?.message || e)}`);
             }
