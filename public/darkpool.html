@@ -358,7 +358,10 @@
         padding: 7px 8px;
         border-bottom: 1px solid #14293c;
         font-size: 12px;
+        cursor: pointer;
+        transition: background 120ms ease;
       }
+      .book-row:hover { background: rgba(31, 92, 173, 0.18); }
       .book-row:last-child { border-bottom: 0; }
       .book-empty {
         padding: 10px;
@@ -902,6 +905,17 @@
         min-height: 32px;
         line-height: 1;
       }
+      .trade-action-row button.prefill-target {
+        box-shadow: 0 0 0 1px rgba(78, 199, 255, 0.72), 0 0 18px rgba(78, 199, 255, 0.18);
+      }
+      .trade-action-row button.prefill-other {
+        filter: saturate(0.78);
+        opacity: 0.84;
+      }
+      .book-prefill-hint {
+        min-height: 16px;
+        color: #9bc7ea;
+      }
       .vault-zone {
         background: var(--panel);
         border: 1px solid var(--line);
@@ -1234,6 +1248,7 @@
             <button type="button" class="buy" id="placeBuy">Buy</button>
             <button type="button" class="sell" id="placeSell">Sell</button>
           </div>
+          <div id="bookPrefillHint" class="sub book-prefill-hint"></div>
           <div id="ordFundingModeHint" class="sub"></div>
           <div id="pretradeChecklist" class="checklist"></div>
           <div id="marketVerify" class="market-verify mono"></div>
@@ -1582,6 +1597,7 @@
       let latestChartTrades = [];
       let latestChartMarket = null;
       let lastNonMarketTif = 'GTC';
+      let recommendedBookActionSide = '';
       let operatorPanelAllowedWallet = null;
       let operatorPanelAdminKeyConfigured = false;
       const walletSyncTimes = new Map();
@@ -1609,6 +1625,23 @@
       function setText(id, value) {
         document.getElementById(id).textContent =
           typeof value === 'string' ? value : JSON.stringify(mapNumbersForDisplay(value), null, 2);
+      }
+
+      function updateBookPrefillActionUi(side = '') {
+        recommendedBookActionSide = side === 'BUY' || side === 'SELL' ? side : '';
+        const buyBtn = document.getElementById('placeBuy');
+        const sellBtn = document.getElementById('placeSell');
+        const hint = document.getElementById('bookPrefillHint');
+        if (!buyBtn || !sellBtn || !hint) return;
+        buyBtn.classList.toggle('prefill-target', recommendedBookActionSide === 'BUY');
+        buyBtn.classList.toggle('prefill-other', recommendedBookActionSide === 'SELL');
+        sellBtn.classList.toggle('prefill-target', recommendedBookActionSide === 'SELL');
+        sellBtn.classList.toggle('prefill-other', recommendedBookActionSide === 'BUY');
+        if (!recommendedBookActionSide) {
+          hint.textContent = '';
+          return;
+        }
+        hint.textContent = `Book click ready: press ${recommendedBookActionSide === 'BUY' ? 'Buy' : 'Sell'} to trade against that displayed level with a LIMIT order.`;
       }
 
       function getConnectedWalletValue() {
@@ -2516,6 +2549,41 @@
         }
       }
 
+      function prefillOrderFromBookLevel(level, side) {
+        const marketId = document.getElementById('bookPair')?.value || '';
+        const market = getMarketById(marketId);
+        if (!market || !level) return;
+        const tradeSide = side === 'buy' ? 'SELL' : 'BUY';
+        const quantity = Number(level.size || 0);
+        const price = Number(level.price || 0);
+
+        document.getElementById('bookPair').value = market.marketId;
+        document.getElementById('chartPair').value = market.marketId;
+        document.getElementById('ordPair').value = market.marketId;
+        document.getElementById('ordMarketId').value = market.marketId;
+        document.getElementById('ordType').value = 'LIMIT';
+        if (lastNonMarketTif === 'IOC') lastNonMarketTif = 'GTC';
+        document.getElementById('ordTif').value = lastNonMarketTif || 'GTC';
+        document.getElementById('ordQty').value = quantity > 0 ? fmtDisplayNumber(quantity) : document.getElementById('ordQty').value;
+        document.getElementById('ordPrice').value = price > 0 ? fmtDisplayNumber(price) : document.getElementById('ordPrice').value;
+        clearReplaceOrderState();
+        updateOrderTypeUi();
+        renderMarketVerify(market);
+        updateOrderIntent(market);
+        updateBookPrefillActionUi(tradeSide);
+        setText('orderOut', {
+          ok: true,
+          action: 'book_level_prefilled',
+          selectedSide: side === 'buy' ? 'bid' : 'ask',
+          orderEntrySide: tradeSide,
+          pair: market.pair,
+          limitPrice: price > 0 ? price : null,
+          quantity: quantity > 0 ? quantity : null,
+          message: `Prefilled a ${tradeSide} LIMIT order from the ${side === 'buy' ? 'bid' : 'ask'} level. You can submit as-is or edit it before signing.`
+        });
+        refreshPretradeChecklist().catch(() => {});
+      }
+
       function renderBookRows(targetId, rows, side) {
         const root = document.getElementById(targetId);
         root.innerHTML = '';
@@ -2533,6 +2601,10 @@
             <div class="mono ${side === 'buy' ? 'green' : 'red'}">${fmtDisplayNumber(level.price)}</div>
             <div class="mono">${fmtDisplayNumber(level.size)}</div>
           `;
+          row.title = side === 'buy'
+            ? 'Click to prefill a SELL limit order against this bid'
+            : 'Click to prefill a BUY limit order against this ask';
+          row.onclick = () => prefillOrderFromBookLevel(level, side);
           root.appendChild(row);
         }
       }
@@ -2692,6 +2764,7 @@
 
       function loadOrderIntoEntry(order) {
         if (!order || !order.id) throw new Error('open order payload is invalid');
+        updateBookPrefillActionUi('');
         const market = getMarketById(order.marketId) || knownMarkets.find((m) => m.pair === order.pair) || null;
         if (market) {
           document.getElementById('ordPair').value = market.marketId;
@@ -3519,6 +3592,7 @@
         try {
           document.getElementById('placeBuy').disabled = true;
           await placeOrder('BUY');
+          updateBookPrefillActionUi('');
         } catch (e) {
           setText('orderOut', formatOrderError(e));
         } finally {
@@ -3529,6 +3603,7 @@
         try {
           document.getElementById('placeSell').disabled = true;
           await placeOrder('SELL');
+          updateBookPrefillActionUi('');
         } catch (e) {
           setText('orderOut', formatOrderError(e));
         } finally {
@@ -3545,6 +3620,7 @@
       document.getElementById('bookPair').onchange = async () => {
         const market = getMarketById(document.getElementById('bookPair').value);
         if (market) {
+          updateBookPrefillActionUi('');
           clearReplaceOrderState();
           document.getElementById('chartPair').value = market.marketId;
           document.getElementById('ordPair').value = market.marketId;
@@ -3562,6 +3638,7 @@
       document.getElementById('ordPair').onchange = async () => {
         const market = getMarketById(document.getElementById('ordPair').value);
         if (market) {
+          updateBookPrefillActionUi('');
           clearReplaceOrderState();
           document.getElementById('bookPair').value = market.marketId;
           document.getElementById('chartPair').value = market.marketId;
@@ -3581,6 +3658,7 @@
       document.getElementById('chartPair').onchange = async () => {
         const market = getMarketById(document.getElementById('chartPair').value);
         if (market) {
+          updateBookPrefillActionUi('');
           document.getElementById('bookPair').value = market.marketId;
         }
         try {
