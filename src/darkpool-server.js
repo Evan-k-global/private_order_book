@@ -1546,14 +1546,13 @@ async function validateOrderAuthorization({ wallet, market, side, orderType, tim
   const nonce = requireString(authorization.nonce, 'orderAuthorization.nonce');
   pruneExpiredOrderAuthNonces(currentNow);
   if (usedOrderAuthNonces.has(nonce)) throw new Error('order authorization nonce already used');
-  const signature =
+  const signature = await normalizeAuthorizationSignature(
     authorization.signature ??
     authorization.signatureBase58 ??
     authorization.rawSignature ??
-    null;
-  if (signature === null || signature === undefined || signature === '' || typeof signature !== 'string') {
-    throw new Error('order authorization signature must be a non-empty string');
-  }
+    authorization.signedData ??
+    null
+  );
   const signer = await getMinaSignerClient();
   const isValid = signer.verifyMessage({
     data: providedPayload,
@@ -1571,6 +1570,7 @@ async function validateOrderAuthorization({ wallet, market, side, orderType, tim
 }
 
 let minaSignerClientPromise = null;
+let o1jsRuntimePromise = null;
 const usedOrderAuthNonces = new Map();
 
 async function getMinaSignerClient() {
@@ -1582,6 +1582,34 @@ async function getMinaSignerClient() {
     });
   }
   return minaSignerClientPromise;
+}
+
+async function getO1jsRuntime() {
+  if (!o1jsRuntimePromise) {
+    o1jsRuntimePromise = import('o1js');
+  }
+  return o1jsRuntimePromise;
+}
+
+async function normalizeAuthorizationSignature(signatureLike) {
+  if (typeof signatureLike === 'string' && signatureLike.trim()) return signatureLike.trim();
+  if (!signatureLike || typeof signatureLike !== 'object') {
+    throw new Error('order authorization signature must be present');
+  }
+  const candidate =
+    signatureLike.signature ??
+    signatureLike.signedData ??
+    signatureLike.data?.signature ??
+    signatureLike.data?.signedData ??
+    signatureLike;
+  if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  const field = candidate?.field ?? candidate?.r ?? candidate?.R ?? null;
+  const scalar = candidate?.scalar ?? candidate?.s ?? candidate?.S ?? null;
+  if (field === null || field === undefined || scalar === null || scalar === undefined) {
+    throw new Error('order authorization signature format is unsupported');
+  }
+  const { Signature } = await getO1jsRuntime();
+  return Signature.fromValue({ r: String(field), s: String(scalar) }).toBase58();
 }
 
 function pruneExpiredOrderAuthNonces(currentNow = now()) {

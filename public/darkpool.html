@@ -2282,15 +2282,32 @@
         const provider = window.mina;
         if (!provider) throw new Error('No Mina wallet provider found in browser');
         const attempts = [];
+        function normalizeSignatureValue(value) {
+          if (typeof value === 'string' && value.trim()) return value.trim();
+          const candidate =
+            value?.signature ??
+            value?.signedData ??
+            value?.data?.signature ??
+            value?.data?.signedData ??
+            value ??
+            null;
+          if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+          const field = candidate?.field ?? candidate?.r ?? candidate?.R ?? null;
+          const scalar = candidate?.scalar ?? candidate?.s ?? candidate?.S ?? null;
+          if (field !== null && field !== undefined && scalar !== null && scalar !== undefined) {
+            return { field: String(field), scalar: String(scalar) };
+          }
+          return null;
+        }
         function normalizeSignedMessage(response, method) {
-          const signature = response?.signature || response?.signatureBase58 || response?.signedData || null;
-          if (typeof signature !== 'string' || !signature.trim()) {
+          const signature = normalizeSignatureValue(response?.signatureBase58 || response?.signature || response?.signedData || response);
+          if (!signature) {
             throw new Error('Wallet signature was not completed');
           }
           return {
             method,
             publicKey: response?.publicKey || response?.address || wallet,
-            signature: signature.trim(),
+            signature,
             raw: response
           };
         }
