@@ -4673,6 +4673,7 @@ async function main() {
       if (req.method === 'POST' && url.pathname === '/api/darkpool/orders/place') {
         const body = await readJsonBody(req);
         const participant = deriveBlindedAccountId(body);
+        let validatedOrderAuthorization = null;
         const frontendId = normalizeFrontendId(body.frontendId);
         const pairConfig = resolveMarket(body);
         const side = normalizeSide(body.side);
@@ -4721,7 +4722,7 @@ async function main() {
           if (!lastSync || now() - lastSync > ONCHAIN_SYNC_TTL_MS) {
             throw new Error('on-chain balances are stale; call /api/darkpool/accounts/sync-onchain');
           }
-          const validatedOrderAuthorization = await validateOrderAuthorization({
+          validatedOrderAuthorization = await validateOrderAuthorization({
             wallet: linkedWallet,
             market: pairConfig,
             side,
@@ -4756,7 +4757,9 @@ async function main() {
         const sequencingReceipt = createSequencingReceipt(order, participant);
 
         const settlementBatch = await enqueueSettlementBatch(participant, fills);
-        usedOrderAuthNonces.set(validatedOrderAuthorization.nonce, validatedOrderAuthorization.expiresAtUnixMs);
+        if (validatedOrderAuthorization) {
+          usedOrderAuthNonces.set(validatedOrderAuthorization.nonce, validatedOrderAuthorization.expiresAtUnixMs);
+        }
         writeJson(res, 200, {
           ok: true,
           order: sanitizeOrder(order),
@@ -4942,6 +4945,7 @@ async function main() {
       if (req.method === 'POST' && url.pathname.match(/^\/api\/darkpool\/orders\/[^/]+\/replace$/)) {
         const orderId = url.pathname.split('/')[4];
         const body = await readJsonBody(req);
+        let validatedOrderAuthorization = null;
         const cancelToken = requireString(body.cancelToken, 'cancelToken');
         const existingOrder = orders.get(orderId);
         if (!existingOrder) throw new Error('order not found');
@@ -5000,7 +5004,7 @@ async function main() {
           if (!lastSync || now() - lastSync > ONCHAIN_SYNC_TTL_MS) {
             throw new Error('on-chain balances are stale; call /api/darkpool/accounts/sync-onchain');
           }
-          const validatedOrderAuthorization = await validateOrderAuthorization({
+          validatedOrderAuthorization = await validateOrderAuthorization({
             wallet: linkedWallet,
             market: pairConfig,
             side,
@@ -5042,7 +5046,9 @@ async function main() {
         const orderReceipt = createOrderReceipt(order, participant);
         const sequencingReceipt = createSequencingReceipt(order, participant);
         const settlementBatch = await enqueueSettlementBatch(participant, fills);
-        usedOrderAuthNonces.set(validatedOrderAuthorization.nonce, validatedOrderAuthorization.expiresAtUnixMs);
+        if (validatedOrderAuthorization) {
+          usedOrderAuthNonces.set(validatedOrderAuthorization.nonce, validatedOrderAuthorization.expiresAtUnixMs);
+        }
         logActivity(participant, 'order_replaced', {
           replacedOrderId: existingOrder.id,
           newOrderId: order.id,
