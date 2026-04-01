@@ -1126,6 +1126,38 @@
       .activity-row:last-child {
         border-bottom: 0;
       }
+      .activity-filters {
+        display: grid;
+        grid-template-columns: 120px 92px repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      .activity-filter {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .activity-filter label {
+        margin-bottom: 0;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .activity-head button {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-transform: inherit;
+        letter-spacing: inherit;
+        padding: 0;
+        text-align: left;
+        cursor: pointer;
+      }
+      .activity-head button.is-active {
+        color: #d5e7f5;
+      }
       @media (max-width: 980px) {
         .app {
           grid-template-columns: 1fr;
@@ -1259,6 +1291,9 @@
         .activity-head,
         .activity-row {
           min-width: 760px;
+        }
+        .activity-filters {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
         .book-grid {
           grid-template-columns: 1fr;
@@ -1476,12 +1511,47 @@
           </div>
         </div>
         <div class="bd stack">
+          <div class="activity-filters">
+            <div class="activity-filter">
+              <label for="activityTimeFilter">Time</label>
+              <select id="activityTimeFilter" class="compact-select">
+                <option value="all">All</option>
+                <option value="1h">1 hour</option>
+                <option value="24h">24 hours</option>
+                <option value="7d">7 days</option>
+              </select>
+            </div>
+            <div class="activity-filter">
+              <label for="activitySideFilter">Side</label>
+              <select id="activitySideFilter" class="compact-select">
+                <option value="all">All</option>
+                <option value="BUY">Buy</option>
+                <option value="SELL">Sell</option>
+              </select>
+            </div>
+            <div class="activity-filter">
+              <label for="activityMinPrice">Min Price</label>
+              <input id="activityMinPrice" class="compact-input" type="number" step="any" placeholder="0" />
+            </div>
+            <div class="activity-filter">
+              <label for="activityMaxPrice">Max Price</label>
+              <input id="activityMaxPrice" class="compact-input" type="number" step="any" placeholder="-" />
+            </div>
+            <div class="activity-filter">
+              <label for="activityMinQty">Min Qty</label>
+              <input id="activityMinQty" class="compact-input" type="number" step="any" placeholder="0" />
+            </div>
+            <div class="activity-filter">
+              <label for="activityMaxQty">Max Qty</label>
+              <input id="activityMaxQty" class="compact-input" type="number" step="any" placeholder="-" />
+            </div>
+          </div>
           <div class="activity-table">
             <div class="activity-head">
-              <div>Time</div>
-              <div>Action</div>
+              <div><button type="button" id="activityTimeHeader" title="Toggle newest/oldest first">Time</button></div>
+              <div><button type="button" id="activityActionHeader" title="Toggle open orders only">Action</button></div>
               <div>Market/Asset</div>
-              <div>Side</div>
+              <div><button type="button" id="activitySideHeader" title="Cycle side filter">Side</button></div>
               <div>Price</div>
               <div>Qty</div>
               <div>Notes</div>
@@ -2747,6 +2817,11 @@
         return 'Connect your wallet and sync/fund your account before trading.';
       }
 
+      const activityFilterState = {
+        sortTime: 'desc',
+        openOnly: false
+      };
+
       function isDemoWalletPlaceholder(wallet) {
         const value = String(wallet || '').trim().toLowerCase();
         if (!value) return true;
@@ -2816,11 +2891,99 @@
         return collapsed;
       }
 
+      function parseFilterNumber(id) {
+        const raw = document.getElementById(id)?.value ?? '';
+        if (raw === '') return null;
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      function getActivityFilterConfig() {
+        const timeValue = String(document.getElementById('activityTimeFilter')?.value || 'all');
+        const sideValue = String(document.getElementById('activitySideFilter')?.value || 'all').toUpperCase();
+        const now = Date.now();
+        const timeThreshold =
+          timeValue === '1h' ? now - 60 * 60 * 1000 :
+          timeValue === '24h' ? now - 24 * 60 * 60 * 1000 :
+          timeValue === '7d' ? now - 7 * 24 * 60 * 60 * 1000 :
+          0;
+        return {
+          timeThreshold,
+          side: sideValue,
+          minPrice: parseFilterNumber('activityMinPrice'),
+          maxPrice: parseFilterNumber('activityMaxPrice'),
+          minQty: parseFilterNumber('activityMinQty'),
+          maxQty: parseFilterNumber('activityMaxQty')
+        };
+      }
+
+      function matchesActivityFilters(record, filters) {
+        const createdAtUnixMs = Number(record?.createdAtUnixMs || 0);
+        if (filters.timeThreshold && createdAtUnixMs < filters.timeThreshold) return false;
+        const side = String(record?.side || '').trim().toUpperCase();
+        if (filters.side !== 'ALL') {
+          if (!side || side !== filters.side) return false;
+        }
+        const price = record?.price;
+        if (filters.minPrice !== null && !(Number(price) >= filters.minPrice)) return false;
+        if (filters.maxPrice !== null && !(Number(price) <= filters.maxPrice)) return false;
+        const qty = record?.quantity;
+        if (filters.minQty !== null && !(Number(qty) >= filters.minQty)) return false;
+        if (filters.maxQty !== null && !(Number(qty) <= filters.maxQty)) return false;
+        return true;
+      }
+
+      function updateActivityHeaderUi() {
+        const timeBtn = document.getElementById('activityTimeHeader');
+        const actionBtn = document.getElementById('activityActionHeader');
+        const sideBtn = document.getElementById('activitySideHeader');
+        if (timeBtn) {
+          timeBtn.textContent = activityFilterState.sortTime === 'asc' ? 'Time ↑' : 'Time ↓';
+          timeBtn.classList.add('is-active');
+        }
+        if (actionBtn) {
+          actionBtn.textContent = activityFilterState.openOnly ? 'Action: Open' : 'Action';
+          actionBtn.classList.toggle('is-active', activityFilterState.openOnly);
+        }
+        if (sideBtn) {
+          const sideValue = String(document.getElementById('activitySideFilter')?.value || 'all').toUpperCase();
+          sideBtn.textContent = sideValue === 'ALL' ? 'Side' : `Side: ${sideValue}`;
+          sideBtn.classList.toggle('is-active', sideValue !== 'ALL');
+        }
+      }
+
       function renderActivity(events, openOrders) {
         const root = document.getElementById('activityRows');
         root.innerHTML = '';
-        const collapsedEvents = collapseActivityEvents(events);
-        const activeOrders = Array.isArray(openOrders) ? openOrders : [];
+        const filters = getActivityFilterConfig();
+        let collapsedEvents = collapseActivityEvents(events);
+        let activeOrders = Array.isArray(openOrders) ? openOrders : [];
+        activeOrders = activeOrders.filter((order) =>
+          matchesActivityFilters(
+            {
+              createdAtUnixMs: order.createdAtUnixMs,
+              side: order.side,
+              price: order.limitPrice,
+              quantity: order.remaining
+            },
+            filters
+          )
+        );
+        collapsedEvents = collapsedEvents.filter((ev) =>
+          matchesActivityFilters(
+            {
+              createdAtUnixMs: ev.createdAtUnixMs,
+              side: ev?.details?.side,
+              price: ev?.details?.price ?? ev?.details?.limitPrice,
+              quantity: ev?.details?.quantity ?? ev?.details?.amount
+            },
+            filters
+          )
+        );
+        const sortDirection = activityFilterState.sortTime === 'asc' ? 1 : -1;
+        activeOrders = [...activeOrders].sort((a, b) => (Number(a.createdAtUnixMs || 0) - Number(b.createdAtUnixMs || 0)) * sortDirection);
+        collapsedEvents = [...collapsedEvents].sort((a, b) => (Number(a.createdAtUnixMs || 0) - Number(b.createdAtUnixMs || 0)) * sortDirection);
+        if (activityFilterState.openOnly) collapsedEvents = [];
         if ((!collapsedEvents || collapsedEvents.length === 0) && activeOrders.length === 0) {
           const row = document.createElement('div');
           row.className = 'activity-row';
@@ -3513,6 +3676,7 @@
 
       async function refreshActivity() {
         const view = document.getElementById('activityView')?.value || 'your';
+        updateActivityHeaderUi();
         if (view === 'global') {
           await refreshTrades();
           return;
@@ -3858,6 +4022,26 @@
         updateVisibilityHint();
       };
       document.getElementById('activityView').onchange = () => { refreshActivity().catch(() => {}); };
+      document.getElementById('activityTimeHeader').onclick = () => {
+        activityFilterState.sortTime = activityFilterState.sortTime === 'desc' ? 'asc' : 'desc';
+        refreshActivity().catch(() => {});
+      };
+      document.getElementById('activityActionHeader').onclick = () => {
+        activityFilterState.openOnly = !activityFilterState.openOnly;
+        refreshActivity().catch(() => {});
+      };
+      document.getElementById('activitySideHeader').onclick = () => {
+        const sideEl = document.getElementById('activitySideFilter');
+        if (!sideEl) return;
+        sideEl.value = sideEl.value === 'all' ? 'BUY' : sideEl.value === 'BUY' ? 'SELL' : 'all';
+        refreshActivity().catch(() => {});
+      };
+      for (const id of ['activityTimeFilter', 'activitySideFilter', 'activityMinPrice', 'activityMaxPrice', 'activityMinQty', 'activityMaxQty']) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        el.oninput = () => { refreshActivity().catch(() => {}); };
+        el.onchange = () => { refreshActivity().catch(() => {}); };
+      }
       document.getElementById('ordWallet').oninput = () => {
         updateBookPrefillActionUi('');
         clearReplaceOrderState();
