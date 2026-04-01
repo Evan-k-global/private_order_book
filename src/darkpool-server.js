@@ -3730,9 +3730,11 @@ async function markBatchCommittedInternal(batchId, txHash = null, payoutTxs = []
   if (!target) throw new Error('batch not found');
 
   if (
-    SETTLEMENT_REQUIRE_ONCHAIN_PAYOUTS &&
     target.batchType === 'trade_settlement' &&
     target.status !== 'committed' &&
+    (target.requiresOnchainPayouts !== undefined
+      ? Boolean(target.requiresOnchainPayouts)
+      : SETTLEMENT_REQUIRE_ONCHAIN_PAYOUTS) &&
     !(typeof txHash === 'string' && txHash.startsWith('local_'))
   ) {
     const requiredPayouts = Array.isArray(target.payouts) ? target.payouts : [];
@@ -3781,7 +3783,7 @@ async function markBatchCommittedInternal(batchId, txHash = null, payoutTxs = []
   }
 
   if (target.status !== 'committed') {
-    if (SETTLEMENT_PROCEEDS_AS_NOTES && typeof txHash === 'string' && txHash.startsWith('local_')) {
+    if (SETTLEMENT_PROCEEDS_AS_NOTES && target.batchType === 'trade_settlement') {
       target.noteSettlementOutputs = issueSettlementProceedsNotes(target);
       target.privateStateDelta = buildLivePrivateStateDelta();
       target.noteRootHash = computeNoteCommitmentRoot();
