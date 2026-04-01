@@ -2190,6 +2190,12 @@
       async function refreshNotesPortfolio() {
         const wallet = document.getElementById('noteWallet')?.value?.trim();
         if (!wallet) return;
+        if (isDemoWalletPlaceholder(wallet)) {
+          latestNotesPortfolio = null;
+          setText('notesPortfolioOut', walletSetupMessage('notes'));
+          await refreshWithdrawPanel();
+          return;
+        }
         try {
           const data = await sdk.getNotesPortfolio(wallet);
           latestNotesPortfolio = data;
@@ -2316,6 +2322,10 @@
         const limitPrice = orderType === 'MARKET' ? null : Number(document.getElementById('ordPrice').value || 0);
         if (!wallet || !marketId || !Number.isFinite(quantity) || quantity <= 0) {
           root.innerHTML = checklistRow('Checklist', 'warn', 'enter wallet/market/qty');
+          return;
+        }
+        if (isDemoWalletPlaceholder(wallet)) {
+          root.innerHTML = checklistRow('Checklist', 'warn', 'connect wallet + sync/fund account');
           return;
         }
         try {
@@ -2576,12 +2586,14 @@
       async function syncWalletIfNeeded(wallet, force = false) {
         const w = String(wallet || '').trim();
         if (!w) throw new Error('wallet is required');
+        if (isDemoWalletPlaceholder(w)) return false;
         const last = Number(walletSyncTimes.get(w) || 0);
         const due = force || !last || (Date.now() - last > WALLET_SYNC_COOLDOWN_MS);
-        if (!due) return;
+        if (!due) return true;
         try {
           await sdk.syncOnchainBalance({ wallet: w });
           walletSyncTimes.set(w, Date.now());
+          return true;
         } catch (error) {
           throw error;
         }
@@ -2716,6 +2728,12 @@
 
       function fmtNum(v, digits = 4) {
         return fmtDisplayNumber(v);
+      }
+
+      function walletSetupMessage(action = 'trade') {
+        if (action === 'sync') return 'Connect your wallet and sync/fund your account to view balances.';
+        if (action === 'notes') return 'Connect your wallet and sync/fund your account to view private collateral.';
+        return 'Connect your wallet and sync/fund your account before trading.';
       }
 
       function isDemoWalletPlaceholder(wallet) {
@@ -3604,6 +3622,7 @@
         if (!marketId || !market) throw new Error('market not selected');
         const wallet = document.getElementById('ordWallet').value.trim();
         if (!wallet) throw new Error('wallet is required');
+        if (isDemoWalletPlaceholder(wallet)) throw new Error(walletSetupMessage('trade'));
         const orderType = document.getElementById('ordType').value;
         const quantity = Number(document.getElementById('ordQty').value);
         const timeInForce = document.getElementById('ordTif').value;
@@ -3882,6 +3901,10 @@
       document.getElementById('syncBtn').onclick = async () => {
         try {
           const wallet = document.getElementById('chainWallet').value.trim();
+          if (isDemoWalletPlaceholder(wallet)) {
+            setText('notesPortfolioOut', walletSetupMessage('sync'));
+            return;
+          }
           setText('notesPortfolioOut', 'Syncing on-chain balances and rebuilding wallet + private collateral view...');
           await syncWalletContext(wallet);
         } catch (e) { setText('notesPortfolioOut', String(e)); }
