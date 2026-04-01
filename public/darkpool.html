@@ -1818,7 +1818,7 @@
         const n = Number(value);
         if (!Number.isFinite(n)) return '-';
         if (Math.abs(n - Math.trunc(n)) < 1e-9) return n.toFixed(2);
-        return n.toFixed(4).replace(/\.?0+$/, '');
+        return n.toFixed(4);
       }
 
       function fmtUtcTime(value) {
