@@ -1445,15 +1445,11 @@
           </li>
           <li class="welcome-step">
             <div class="welcome-step-num">2</div>
-            <div><strong>Sync on-chain balances</strong><span>Pull your latest wallet balances into the trading session first.</span></div>
+            <div><strong>Visit the Funding page</strong><span>Sync your on-chain balances and mint private note collateral there first.</span></div>
           </li>
           <li class="welcome-step">
             <div class="welcome-step-num">3</div>
-            <div><strong>Mint private notes</strong><span>Convert funded assets into private note collateral that orders can spend.</span></div>
-          </li>
-          <li class="welcome-step">
-            <div class="welcome-step-num">4</div>
-            <div><strong>Trade with notes</strong><span>Orders spend note collateral immediately. Counter-asset notes appear after trade settlement.</span></div>
+            <div><strong>Go to the Trading page</strong><span>Place market or limit orders, spending your private note collateral to trade.</span></div>
           </li>
         </ol>
         <div class="welcome-footnote">
@@ -1905,7 +1901,7 @@
       let requireOnchainDepositTx = true;
       let vaultDepositAddress = '';
       let walletConnected = false;
-      const welcomeStorageKey = 'shadowbook:first-visit-dismissed:v2';
+      const welcomeStorageKey = 'shadowbook:first-visit-dismissed:v3';
       let chartApi = null;
       let candleSeries = null;
       let volumeSeries = null;
