@@ -217,6 +217,12 @@
         font-size: 11px;
         color: #9eb8cf;
       }
+      .check-note {
+        font-size: 10px;
+        line-height: 1.4;
+        color: #7f96ad;
+        padding-left: 2px;
+      }
       .check-row strong {
         font-weight: 600;
       }
@@ -2312,6 +2318,10 @@
         return `<div class="check-row"><span>${label}</span><strong class="${cls}">${detail}</strong></div>`;
       }
 
+      function checklistNote(message) {
+        return `<div class="check-note">${message}</div>`;
+      }
+
       async function refreshPretradeChecklist() {
         const root = document.getElementById('pretradeChecklist');
         if (!root) return;
@@ -2369,6 +2379,7 @@
             ) +
             checklistRow(`Buy note collateral ${buyReq.asset || '-'}`, buyAvail + 1e-9 >= buyReqAmt ? 'ok' : 'bad', `${fmtDisplayNumber(buyReqAmt)} / notes ${fmtDisplayNumber(buyAvail)}`) +
             checklistRow(`Sell note collateral ${sellReq.asset || '-'}`, sellAvail + 1e-9 >= sellReqAmt ? 'ok' : 'bad', `${fmtDisplayNumber(sellReqAmt)} / notes ${fmtDisplayNumber(sellAvail)}`) +
+            checklistNote('Counter-asset note balances update after on-chain trade settlement.') +
             checklistRow('Locked base collateral', lockedBase > 0 ? 'warn' : 'ok', fmtDisplayNumber(lockedBase)) +
             checklistRow('Locked quote collateral', lockedQuote > 0 ? 'warn' : 'ok', fmtDisplayNumber(lockedQuote));
         } catch (error) {
