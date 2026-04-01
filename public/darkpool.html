@@ -2752,6 +2752,20 @@
         return activityWalletEl.value.trim() || orderWallet;
       }
 
+      function scheduleSettlementUiRefresh() {
+        const delaysMs = [3000, 9000];
+        for (const delayMs of delaysMs) {
+          window.setTimeout(async () => {
+            try {
+              await refreshNotesPortfolio();
+              await refreshNoteAssetOptions();
+              await refreshPretradeChecklist();
+              if (isActivityAutoRefreshEnabled()) await refreshActivity();
+            } catch {}
+          }, delayMs);
+        }
+      }
+
       function collapseActivityEvents(events) {
         const collapsed = [];
         const selfFillByTradeId = new Map();
@@ -3727,6 +3741,7 @@
         await refreshActivity();
         await refreshFeeStats();
         await refreshPretradeChecklist();
+        scheduleSettlementUiRefresh();
       }
 
       document.getElementById('placeBuy').onclick = async () => {
@@ -4236,7 +4251,12 @@
           setInterval(async () => {
             try {
               const w = document.getElementById('ordWallet')?.value?.trim();
-              if (w) await syncWalletIfNeeded(w, false);
+              if (w) {
+                await syncWalletIfNeeded(w, false);
+                await refreshNotesPortfolio();
+                await refreshNoteAssetOptions();
+                await refreshPretradeChecklist();
+              }
             } catch {}
           }, 15000);
         } catch (e) {
