@@ -644,7 +644,7 @@
       }
       .chart-statusbar {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         gap: 8px;
         align-items: center;
         padding: 10px 12px;
@@ -653,6 +653,7 @@
         min-width: 0;
         position: relative;
         z-index: 1;
+        overflow-x: auto;
       }
       .chart-pill-stat {
         border: 1px solid #1f3346;
@@ -660,6 +661,7 @@
         background: #0d1822;
         padding: 7px 10px;
         min-width: 0;
+        flex: 0 0 auto;
       }
       .chart-pill-stat label {
         margin: 0 0 2px 0;
@@ -670,6 +672,14 @@
       .chart-pill-stat .value {
         font-size: 11px;
         color: #d6e6f7;
+      }
+      .chart-status-note {
+        flex: 1 1 auto;
+        min-width: 180px;
+        font-size: 11px;
+        line-height: 1.35;
+        color: #8ba5bf;
+        white-space: nowrap;
       }
       .chart-pill-stat.note .value {
         font-size: 11px;
@@ -1203,6 +1213,8 @@
           grid-template-columns: 1fr;
         }
         .chart-statusbar {
+          display: flex;
+          flex-wrap: nowrap;
           justify-content: flex-start;
         }
         .chart-controlbar {
@@ -1259,8 +1271,9 @@
           grid-template-columns: repeat(2, minmax(0, 1fr));
           justify-content: stretch;
         }
-        .chart-pill-stat.note {
+        .chart-status-note {
           grid-column: 1 / -1;
+          white-space: normal;
         }
         .chart-toolrail {
           grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2981,34 +2994,37 @@
           )
         );
         const sortDirection = activityFilterState.sortTime === 'asc' ? 1 : -1;
-        activeOrders = [...activeOrders].sort((a, b) => (Number(a.createdAtUnixMs || 0) - Number(b.createdAtUnixMs || 0)) * sortDirection);
-        collapsedEvents = [...collapsedEvents].sort((a, b) => (Number(a.createdAtUnixMs || 0) - Number(b.createdAtUnixMs || 0)) * sortDirection);
         if (activityFilterState.openOnly) collapsedEvents = [];
-        if ((!collapsedEvents || collapsedEvents.length === 0) && activeOrders.length === 0) {
+        const timeline = [
+          ...activeOrders.map((order) => ({ kind: 'open-order', createdAtUnixMs: Number(order.createdAtUnixMs || 0), order })),
+          ...collapsedEvents.map((ev) => ({ kind: 'event', createdAtUnixMs: Number(ev.createdAtUnixMs || 0), ev }))
+        ].sort((a, b) => (Number(a.createdAtUnixMs || 0) - Number(b.createdAtUnixMs || 0)) * sortDirection);
+        if ((!timeline || timeline.length === 0)) {
           const row = document.createElement('div');
           row.className = 'activity-row';
           row.innerHTML = `<div>-</div><div>No activity</div><div>-</div><div>-</div><div>-</div><div>-</div><div>Submit orders to populate history.</div>`;
           root.appendChild(row);
           return;
         }
-        for (const order of activeOrders) {
+        for (const item of timeline) {
           const row = document.createElement('div');
           row.className = 'activity-row';
-          const sequencingLabel = order.sequenceNumber ? `Seq ${order.sequenceNumber}` : 'Open';
-          row.innerHTML = `
-            <div class="mono">${fmtUtcTime(order.createdAtUnixMs)}</div>
-            <div>Open Order</div>
-            <div class="mono">${order.pair || '-'}</div>
-            <div class="mono">${order.side || '-'}</div>
-            <div class="mono">${fmtNum(order.limitPrice, 4)}</div>
-            <div class="mono">${fmtNum(order.remaining, 6)}</div>
-            <div class="mono">${sequencingLabel} · ${(order.visibility || 'public').toUpperCase()} · ${(order.timeInForce || 'GTC')} · ${order.sequencingReceiptHash ? shortHash(order.sequencingReceiptHash) : 'no-seq'} <button type="button" class="ghost replace-open-order" data-order='${JSON.stringify(order).replace(/'/g, '&apos;')}' style="width:auto;padding:3px 8px;margin-left:8px;">Edit</button><button type="button" class="ghost cancel-open-order" data-order-id="${order.id}" data-cancel-token="${order.cancelToken}" style="width:auto;padding:3px 8px;margin-left:8px;">Cancel</button></div>
-          `;
-          root.appendChild(row);
-        }
-        for (const ev of collapsedEvents) {
-          const row = document.createElement('div');
-          row.className = 'activity-row';
+          if (item.kind === 'open-order') {
+            const order = item.order;
+            const sequencingLabel = order.sequenceNumber ? `Seq ${order.sequenceNumber}` : 'Open';
+            row.innerHTML = `
+              <div class="mono">${fmtUtcTime(order.createdAtUnixMs)}</div>
+              <div>Open Order</div>
+              <div class="mono">${order.pair || '-'}</div>
+              <div class="mono">${order.side || '-'}</div>
+              <div class="mono">${fmtNum(order.limitPrice, 4)}</div>
+              <div class="mono">${fmtNum(order.remaining, 6)}</div>
+              <div class="mono">${sequencingLabel} · ${(order.visibility || 'public').toUpperCase()} · ${(order.timeInForce || 'GTC')} · ${order.sequencingReceiptHash ? shortHash(order.sequencingReceiptHash) : 'no-seq'} <button type="button" class="ghost replace-open-order" data-order='${JSON.stringify(order).replace(/'/g, '&apos;')}' style="width:auto;padding:3px 8px;margin-left:8px;">Edit</button><button type="button" class="ghost cancel-open-order" data-order-id="${order.id}" data-cancel-token="${order.cancelToken}" style="width:auto;padding:3px 8px;margin-left:8px;">Cancel</button></div>
+            `;
+            root.appendChild(row);
+            continue;
+          }
+          const ev = item.ev;
           const d = ev.details || {};
           const actionMap = {
             order_submitted: 'Order',
@@ -3553,7 +3569,6 @@
           { label: 'Range', value: high !== null && low !== null ? `${fmtDisplayNumber(low)} - ${fmtDisplayNumber(high)}` : '-' },
           { label: 'Volume', value: volume > 0 ? fmtDisplayNumber(volume) : '-' },
           { label: 'Trades', value: String(Array.isArray(trades) ? trades.length : 0) },
-          { label: 'Public Tape', value: 'UTC prints after all fills', note: true },
           { label: 'Last Print', value: lastTrade?.createdAtUnixMs ? fmtUtcTime(lastTrade.createdAtUnixMs) : 'UTC pending' }
         ];
         root.innerHTML = summary
@@ -3563,7 +3578,7 @@
               <div class="value mono">${item.value}</div>
             </div>
           `)
-          .join('');
+          .join('') + `<div class="chart-status-note mono">UTC prints after all fills</div>`;
       }
 
       function setChartIntervalButtonState(intervalSec) {
