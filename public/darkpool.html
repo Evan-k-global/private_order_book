@@ -1551,7 +1551,6 @@
             </select>
             <button type="button" class="ghost network-sync-btn" id="walletNetworkSyncBtn">Sync Network</button>
           </div>
-          <div class="network-status" id="walletNetworkStatus">Server network: loading...</div>
         </div>
       </div>
     </div>
@@ -1808,7 +1807,7 @@
             <div class="footnote">Testing-only maker controls. Production makers should call authenticated APIs directly.</div>
             <div class="grid2">
               <div><label>Maker Wallet</label><input id="makerWallet" value="B62qdemo_maker_wallet" /></div>
-              <div><label>Pair</label><input id="makerPair" value="tETH/tZEKO" readonly /></div>
+              <div><label>Pair</label><input id="makerPair" value="" readonly /></div>
             </div>
             <input id="makerMarketId" type="hidden" />
             <div class="grid2">
@@ -1865,7 +1864,7 @@
           <div class="bd stack">
             <div class="footnote mono">
               1) Connect Wallet.
-              2) Acquire testnet tETH/tZEKO/tMINA in wallet.
+              2) Acquire the supported testnet assets for this deployment in your wallet.
               3) Mint and Redeem privacy notes in Funding UI.
               4) Place orders in Trading UI.
             </div>
@@ -1991,6 +1990,7 @@
       let recommendedBookActionSide = '';
       let operatorPanelAllowedWallet = null;
       let operatorPanelAdminKeyConfigured = false;
+      let serverTokenContractAddresses = {};
       const walletSyncTimes = new Map();
       const WALLET_SYNC_COOLDOWN_MS = 20000;
       const walletNetworkStorageKey = 'shadowbook:selected-wallet-network:v1';
@@ -2035,36 +2035,62 @@
         return walletNetworks[selectedWalletNetworkKey] || walletNetworks.zekoMinaTestnet;
       }
 
-      function setWalletNetworkStatus(message, tone) {
-        const status = document.getElementById('walletNetworkStatus');
-        if (!status) return;
-        status.textContent = message;
-        status.classList.toggle('warn', tone === 'warn');
-        status.classList.toggle('ok', tone === 'ok');
+      function isSepoliaDisplaySelected() {
+        return getSelectedWalletNetwork()?.key === 'zekoEthereumTestnet';
       }
 
-      function describeServerWalletNetwork() {
-        if (!serverWalletNetwork?.label) return 'Server network: unavailable';
-        const endpoint = serverWalletNetwork?.graphqlUrl ? ` (${serverWalletNetwork.graphqlUrl})` : '';
-        return `Server network: ${serverWalletNetwork.label}${endpoint}`;
+      function formatDisplayAsset(asset) {
+        const value = String(asset || '').trim();
+        if (!value) return value;
+        if (!isSepoliaDisplaySelected()) return value;
+        const key = value.toUpperCase();
+        if (key === 'TETH' || key === 'SETH' || key === 'TMINA') return 'sETH';
+        if (key === 'TZEKO' || key === 'SZEKO') return 'sZEKO';
+        return value;
+      }
+
+      function formatDisplayPair(pairOrMarket) {
+        if (!pairOrMarket) return '-';
+        if (typeof pairOrMarket === 'object') {
+          return `${formatDisplayAsset(pairOrMarket.baseAsset)}/${formatDisplayAsset(pairOrMarket.quoteAsset)}`;
+        }
+        const raw = String(pairOrMarket || '');
+        const parts = raw.split('/');
+        if (parts.length === 2) return `${formatDisplayAsset(parts[0])}/${formatDisplayAsset(parts[1])}`;
+        return raw;
+      }
+
+      function setMakerPairDisplay(pairOrMarket) {
+        const input = document.getElementById('makerPair');
+        if (!input) return;
+        const sourcePair =
+          typeof pairOrMarket === 'object'
+            ? String(pairOrMarket.pair || `${pairOrMarket.baseAsset}/${pairOrMarket.quoteAsset}`)
+            : String(pairOrMarket || '');
+        input.dataset.sourcePair = sourcePair;
+        input.value = formatDisplayPair(pairOrMarket);
+      }
+
+      function getMakerPairRequestValue() {
+        const input = document.getElementById('makerPair');
+        return String(input?.dataset?.sourcePair || input?.value || '').trim();
       }
 
       function updateWalletNetworkUi() {
         const select = document.getElementById('walletNetworkSelect');
         if (select && select.value !== selectedWalletNetworkKey) select.value = selectedWalletNetworkKey;
-        const selected = getSelectedWalletNetwork();
-        if (!serverWalletNetwork) {
-          setWalletNetworkStatus(`Preferred wallet network: ${selected.label}`, '');
+      }
+
+      function applySelectedNetworkDisplayDefaults() {
+        const selectedMarketId = document.getElementById('ordPair')?.value || '';
+        const currentMarket = getMarketById(selectedMarketId) || knownMarkets[0] || null;
+        if (currentMarket) {
+          setMakerPairDisplay(currentMarket);
+          renderMarketVerify(currentMarket);
+          updateOrderIntent(currentMarket);
           return;
         }
-        if (serverWalletNetwork.key && serverWalletNetwork.key !== selected.key) {
-          setWalletNetworkStatus(
-            `${describeServerWalletNetwork()}. Wallet preference is ${selected.label}; backend remains single-network until redeployed.`,
-            'warn'
-          );
-          return;
-        }
-        setWalletNetworkStatus(describeServerWalletNetwork(), 'ok');
+        setMakerPairDisplay(isSepoliaDisplaySelected() ? 'sETH/sZEKO' : 'tETH/tZEKO');
       }
 
       async function auroRequest(methodName, params) {
@@ -2141,16 +2167,6 @@
         }
         const currentNetwork = await requestAuroNetworkInfo();
         const ethereumResult = await ensureEthereumCompanionNetwork(selected);
-        const serverDescription = describeServerWalletNetwork();
-        const aux = [];
-        if (currentNetwork?.networkID) aux.push(`Auro: ${currentNetwork.networkID}`);
-        if (ethereumResult?.attempted) {
-          aux.push(ethereumResult.switched ? 'MetaMask: Ethereum Sepolia' : `MetaMask: ${ethereumResult.error || 'not switched'}`);
-        }
-        setWalletNetworkStatus(
-          `${serverDescription}. Requested wallet network: ${selected.label}${aux.length ? ` | ${aux.join(' | ')}` : ''}`,
-          serverWalletNetwork?.key && serverWalletNetwork.key !== selected.key ? 'warn' : 'ok'
-        );
         if (interactive) {
           setText('orderOut', {
             ok: true,
@@ -2331,18 +2347,22 @@
         return Array.from(map.values());
       }
 
+      function isNativeAsset(asset) {
+        return !String(serverTokenContractAddresses[String(asset || '').toUpperCase()] || '').trim();
+      }
+
       function updateSelectedNoteAssetMeta() {
         const select = document.getElementById('noteAsset');
         const meta = document.getElementById('noteAssetMeta');
         if (!select || !meta) return;
         const opt = select.options[select.selectedIndex];
         if (!opt) {
-          meta.textContent = 'No asset selected';
+          meta.textContent = `Supported assets: ${isSepoliaDisplaySelected() ? 'sETH, sZEKO' : 'tETH, tZEKO, tMINA'}`;
           return;
         }
         const tokenId = opt.getAttribute('data-token-id') || '';
         const avail = opt.getAttribute('data-avail') || '';
-        meta.textContent = `Asset: ${opt.value} | Token ID: ${tokenId} | Available: ${avail}`;
+        meta.textContent = `Asset: ${formatDisplayAsset(opt.value)} | Token ID: ${tokenId} | Available: ${avail}`;
         updateDepositActionState();
       }
 
@@ -2352,7 +2372,7 @@
         if (!sendBtn || !hint) return;
         const asset = String(document.getElementById('noteAsset')?.value || '').trim();
         sendBtn.disabled = false;
-        if (asset.toUpperCase() === 'TMINA') {
+        if (isNativeAsset(asset)) {
           hint.textContent =
             `Deposit + Mint uses a native payment flow for ${asset}. Vault: ${vaultDepositAddress || '(not configured)'}.`;
           return;
@@ -2450,7 +2470,7 @@
         const memo = `shadowbook-deposit:${asset}`;
         const attempts = [];
 
-        if (asset.toUpperCase() === 'TMINA') {
+        if (isNativeAsset(asset)) {
           if (typeof provider.sendPayment === 'function') {
             try {
               const response = await provider.sendPayment({
@@ -2656,7 +2676,7 @@
           const avail = Number(balances[key] || 0);
           const opt = document.createElement('option');
           opt.value = item.asset;
-          opt.textContent = `${item.asset} (${fmtDisplayNumber(avail)})`;
+          opt.textContent = `${formatDisplayAsset(item.asset)} (${fmtDisplayNumber(avail)})`;
           opt.setAttribute('data-token-id', item.tokenId);
           opt.setAttribute('data-avail', fmtDisplayNumber(avail));
           select.appendChild(opt);
@@ -2728,8 +2748,8 @@
           : '';
         root.textContent =
           `Market ID: ${market.marketId}\n` +
-          `Base: ${market.baseAsset} (${market.baseTokenId})\n` +
-          `Quote: ${market.quoteAsset} (${market.quoteTokenId})\n` +
+          `Base: ${formatDisplayAsset(market.baseAsset)} (${market.baseTokenId})\n` +
+          `Quote: ${formatDisplayAsset(market.quoteAsset)} (${market.quoteTokenId})\n` +
           `Best Bid / Ask: ${fmtDisplayNumber(market.bestBid)} / ${fmtDisplayNumber(market.bestAsk)}\n` +
           `Indicative Mid: ${fmtDisplayNumber(market.indicativeMid)}` +
           bandText;
@@ -2739,8 +2759,8 @@
         const root = document.getElementById('ordIntent');
         if (root) root.textContent = '';
         if (!market) return;
-        document.getElementById('placeBuy').textContent = `Buy ${market.baseAsset}`;
-        document.getElementById('placeSell').textContent = `Sell ${market.baseAsset}`;
+        document.getElementById('placeBuy').textContent = `Buy ${formatDisplayAsset(market.baseAsset)}`;
+        document.getElementById('placeSell').textContent = `Sell ${formatDisplayAsset(market.baseAsset)}`;
       }
 
       function updateFundingHint() {
@@ -3115,13 +3135,13 @@
           for (const market of knownMarkets) {
             const opt = document.createElement('option');
             opt.value = market.marketId;
-            opt.textContent = `${market.baseAsset}/${market.quoteAsset}`;
+            opt.textContent = formatDisplayPair(market);
             el.appendChild(opt);
           }
           el.value = selected.marketId;
         }
 
-        document.getElementById('makerPair').value = selected.pair;
+        setMakerPairDisplay(selected);
         document.getElementById('ordMarketId').value = selected.marketId;
         document.getElementById('makerMarketId').value = selected.marketId;
         renderMarketVerify(selected);
@@ -3159,7 +3179,7 @@
           row.innerHTML = `
             <div class="mono">${fmtUtcTime(t.createdAtUnixMs)}</div>
             <div>Trade</div>
-            <div class="mono">${t.pair || '-'}</div>
+            <div class="mono">${formatDisplayPair(t.pair || '-')}</div>
             <div class="mono">-</div>
             <div class="mono">${fmtDisplayNumber(t.price)}</div>
             <div class="mono">${fmtDisplayNumber(t.quantity)}</div>
@@ -3424,7 +3444,7 @@
             row.innerHTML = `
               <div class="mono">${fmtUtcTime(order.createdAtUnixMs)}</div>
               <div>Open Order</div>
-              <div class="mono">${order.pair || '-'}</div>
+              <div class="mono">${formatDisplayPair(order.pair || '-')}</div>
               <div class="mono">${order.side || '-'}</div>
               <div class="mono">${fmtNum(order.limitPrice, 4)}</div>
               <div class="mono">${fmtNum(order.remaining, 6)}</div>
@@ -3447,7 +3467,7 @@
             note_withdrawn: 'Withdraw'
           };
           const action = actionMap[ev.type] || ev.type;
-          const marketOrAsset = d.pair || d.asset || '-';
+          const marketOrAsset = d.pair ? formatDisplayPair(d.pair) : formatDisplayAsset(d.asset || '-');
           const side = d.side || '-';
           const price = d.price ?? d.limitPrice ?? null;
           const qty = d.quantity ?? d.amount ?? null;
@@ -3688,7 +3708,7 @@
         const intervalLabel = ({ 60: '1m', 300: '5m', 900: '15m', 3600: '1h' })[Number(document.getElementById('chartInterval')?.value || 60)] || '1m';
         legendMain.innerHTML =
           `<span class="swatch"></span>` +
-          `<span>${market?.pair || '-'} · ${intervalLabel} · ShadowBook</span>`;
+          `<span>${formatDisplayPair(market?.pair || '-')} · ${intervalLabel} · ShadowBook</span>`;
         const delta = Number(last.close || 0) - Number(last.open || 0);
         const deltaPct = Number(last.open || 0) > 0 ? (delta / Number(last.open || 0)) * 100 : 0;
         legendValues.innerHTML = [
@@ -3972,7 +3992,7 @@
         const low = lows.length ? Math.min(...lows) : null;
         const volume = rows.reduce((sum, row) => sum + Number(row.volume || 0), 0);
         const lastTrade = Array.isArray(trades) && trades.length ? trades[0] : null;
-        const pairLabel = market?.pair || '-';
+        const pairLabel = formatDisplayPair(market?.pair || '-');
         const summary = [
           { label: 'Market', value: pairLabel },
           { label: 'Range', value: high !== null && low !== null ? `${fmtDisplayNumber(low)} - ${fmtDisplayNumber(high)}` : '-' },
@@ -4278,7 +4298,7 @@
         const payload = {
           wallet,
           marketId,
-          pair: market?.pair || document.getElementById('makerPair').value,
+          pair: market?.pair || getMakerPairRequestValue(),
           side,
           orderType,
           timeInForce,
@@ -4379,7 +4399,7 @@
           clearReplaceOrderState();
           document.getElementById('chartPair').value = market.marketId;
           document.getElementById('ordPair').value = market.marketId;
-          document.getElementById('makerPair').value = market.pair;
+          setMakerPairDisplay(market);
           document.getElementById('ordMarketId').value = market.marketId;
           document.getElementById('makerMarketId').value = market.marketId;
           renderMarketVerify(market);
@@ -4399,7 +4419,7 @@
           document.getElementById('chartPair').value = market.marketId;
           document.getElementById('ordMarketId').value = market.marketId;
           document.getElementById('makerMarketId').value = market.marketId;
-          document.getElementById('makerPair').value = market.pair;
+          setMakerPairDisplay(market);
           renderMarketVerify(market);
           updateOrderIntent(market);
         }
@@ -4588,12 +4608,12 @@
       document.getElementById('sendDepositTxBtn').onclick = async () => {
         const asset = String(document.getElementById('noteAsset')?.value || '').trim() || 'asset';
         try {
-          setDepositBusyState(true, asset.toUpperCase() === 'TMINA' ? 'wallet' : 'building');
+          setDepositBusyState(true, isNativeAsset(asset) ? 'wallet' : 'building');
           setText('vaultOut', {
             ok: true,
             pending: true,
             message:
-              asset.toUpperCase() === 'TMINA'
+              isNativeAsset(asset)
                 ? `Preparing native ${asset} deposit request in wallet.`
                 : `Building ${asset} token deposit transaction. This can take a few seconds on first load.`,
             asset
@@ -4700,7 +4720,7 @@
           setText('vaultOut', {
             ok: true,
             pending: true,
-            message: `Preparing ${fmtDisplayNumber(amount)} ${asset} withdrawal to ${wallet}. Spending private notes and submitting payout transaction...`
+            message: `Preparing ${fmtDisplayNumber(amount)} ${formatDisplayAsset(asset)} withdrawal to ${wallet}. Spending private notes and submitting payout transaction...`
           });
           const result = await sdk.withdraw({ wallet, asset, amount });
           setText('vaultOut', result);
@@ -4734,7 +4754,7 @@
             {
               wallet: document.getElementById('makerWallet').value,
               marketId: document.getElementById('makerMarketId').value,
-              pair: document.getElementById('makerPair').value,
+              pair: getMakerPairRequestValue(),
               bidPrice: Number(document.getElementById('makerBidPx').value),
               askPrice: Number(document.getElementById('makerAskPx').value),
               bidSize: Number(document.getElementById('makerBidSz').value),
@@ -4762,7 +4782,7 @@
             {
               wallet: document.getElementById('makerWallet').value,
               marketId: document.getElementById('makerMarketId').value,
-              pair: document.getElementById('makerPair').value
+              pair: getMakerPairRequestValue()
             },
             makerKey
           );
@@ -4842,6 +4862,11 @@
         if (!walletNetworks[nextKey]) return;
         saveSelectedWalletNetworkKey(nextKey);
         updateWalletNetworkUi();
+        applySelectedNetworkDisplayDefaults();
+        updateSelectedNoteAssetMeta();
+        refreshNoteAssetOptions().catch(() => {});
+        refreshActivity().catch(() => {});
+        refreshTrades().catch(() => {});
         if (walletConnected) {
           try {
             await syncSelectedWalletNetwork({ interactive: true });
@@ -4865,13 +4890,16 @@
           requestAnimationFrame(syncHeaderOffset);
           activateTab('trading');
           maybeShowWelcomeOverlay();
+          applySelectedNetworkDisplayDefaults();
           syncFrontendIdFromUi();
           const status = await sdk.getStatus();
           serverWalletNetwork = status?.server?.walletNetwork || null;
+          serverTokenContractAddresses = status?.server?.tokenContractAddresses || {};
           realFundsMode = Boolean(status?.server?.realFundsMode);
           requireOnchainDepositTx = Boolean(status?.server?.requireOnchainDepositTx);
           vaultDepositAddress = String(status?.server?.vaultDepositAddress || '');
           updateWalletNetworkUi();
+          applySelectedNetworkDisplayDefaults();
           updateFundingHint();
           updateNoteDepositHint();
           setText(

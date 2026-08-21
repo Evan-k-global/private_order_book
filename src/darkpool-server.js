@@ -12,30 +12,62 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 const require = createRequire(import.meta.url);
 
-const pairs = new Map([
-  [
-    'TETH/TZEKO',
-    {
-      symbol: 'tETH/tZEKO',
-      baseAsset: 'tETH',
-      quoteAsset: 'tZEKO',
-      baseTokenId: 'wpWnRKT383VPM2TWtBWs8R4i927SKUgzAycsSs3AyvyriGXyP2',
-      quoteTokenId: 'x3jovPY75iFmbZ5kTfxZmNmEQ6874mmBu3jufom1QsxMNqPx27',
-      referencePrice: 12
+const ZEKO_GRAPHQL = process.env.ZEKO_GRAPHQL || '';
+const IS_SEPOLIA_ZEKO = ZEKO_GRAPHQL.includes('sepolia.zeko.io');
+const ZEKO_NETWORK_ID = process.env.ZEKO_NETWORK_ID || 'testnet';
+const ZEKO_TX_GRAPHQL_ENV = process.env.ZEKO_TX_GRAPHQL || '';
+const ZEKO_ARCHIVE_GRAPHQL = process.env.ZEKO_ARCHIVE_GRAPHQL || '';
+const ZEKO_ARCHIVE_RELAY_GRAPHQL = process.env.ZEKO_ARCHIVE_RELAY_GRAPHQL || '';
+const ZEKO_TX_GRAPHQL =
+  ZEKO_TX_GRAPHQL_ENV ||
+  ZEKO_ARCHIVE_RELAY_GRAPHQL ||
+  ZEKO_ARCHIVE_GRAPHQL ||
+  ZEKO_GRAPHQL;
+const DEFAULT_NATIVE_TOKEN_ID = 'wSHV2S4qX9jFsLjQo8r1BsMLH2ZRKsZx6EJd1sbozGPieEC4Jf';
+const DEFAULT_SZEKO_TOKEN_ID = 'xpAptwG79jEStACsCv9C6yXUBmKbvurUo8GsTPYapn9QWB5zE5';
+const DEFAULT_MARKET_DEFINITIONS = IS_SEPOLIA_ZEKO
+  ? [
+      {
+        symbol: 'sETH/sZEKO',
+        baseAsset: 'sETH',
+        quoteAsset: 'sZEKO',
+        baseTokenId: DEFAULT_NATIVE_TOKEN_ID,
+        quoteTokenId: DEFAULT_SZEKO_TOKEN_ID,
+        referencePrice: 12
+      }
+    ]
+  : [
+      {
+        symbol: 'tETH/tZEKO',
+        baseAsset: 'tETH',
+        quoteAsset: 'tZEKO',
+        baseTokenId: 'wpWnRKT383VPM2TWtBWs8R4i927SKUgzAycsSs3AyvyriGXyP2',
+        quoteTokenId: 'x3jovPY75iFmbZ5kTfxZmNmEQ6874mmBu3jufom1QsxMNqPx27',
+        referencePrice: 12
+      },
+      {
+        symbol: 'tZEKO/tMINA',
+        baseAsset: 'tZEKO',
+        quoteAsset: 'tMINA',
+        baseTokenId: 'x3jovPY75iFmbZ5kTfxZmNmEQ6874mmBu3jufom1QsxMNqPx27',
+        quoteTokenId: DEFAULT_NATIVE_TOKEN_ID,
+        referencePrice: 0.08333333
+      }
+    ];
+const DEFAULT_ASSET_DECIMALS = IS_SEPOLIA_ZEKO
+  ? { SETH: 9, SZEKO: 9 }
+  : { TETH: 9, TZEKO: 9, TMINA: 9 };
+const DEFAULT_TOKEN_CONTRACT_ADDRESSES = IS_SEPOLIA_ZEKO
+  ? {
+      SETH: '',
+      SZEKO: 'B62qpCuSDoTuL8dUcNfuoLoas8A77gRHJTp4WVe5NF2phXbQUNwNZ3W'
     }
-  ],
-  [
-    'TZEKO/TMINA',
-    {
-      symbol: 'tZEKO/tMINA',
-      baseAsset: 'tZEKO',
-      quoteAsset: 'tMINA',
-      baseTokenId: 'x3jovPY75iFmbZ5kTfxZmNmEQ6874mmBu3jufom1QsxMNqPx27',
-      quoteTokenId: 'wSHV2S4qX9jFsLjQo8r1BsMLH2ZRKsZx6EJd1sbozGPieEC4Jf',
-      referencePrice: 0.08333333
-    }
-  ]
-]);
+  : {
+      TETH: 'B62qpmXGkHW2hK6jgy1CcEFW3j2vbr1EamLef744ot3qhxDinLqgUXH',
+      TZEKO: 'B62qjUhPDbMskxMduyzkyGnK6LZwHksuuYPRjyF4owJM7UWLGJynN36',
+      TMINA: ''
+    };
+const pairs = new Map();
 const marketsById = new Map();
 const marketsByTokenKey = new Map();
 
@@ -56,16 +88,6 @@ const frontendFeeLedger = new Map();
 const protocolFeeBalances = {};
 const participantWallets = new Map();
 const WALLET_HASH_SALT = process.env.WALLET_HASH_SALT || 'shadowbook-demo-salt';
-const ZEKO_GRAPHQL = process.env.ZEKO_GRAPHQL || '';
-const ZEKO_NETWORK_ID = process.env.ZEKO_NETWORK_ID || 'testnet';
-const ZEKO_TX_GRAPHQL_ENV = process.env.ZEKO_TX_GRAPHQL || '';
-const ZEKO_ARCHIVE_GRAPHQL = process.env.ZEKO_ARCHIVE_GRAPHQL || '';
-const ZEKO_ARCHIVE_RELAY_GRAPHQL = process.env.ZEKO_ARCHIVE_RELAY_GRAPHQL || '';
-const ZEKO_TX_GRAPHQL =
-  ZEKO_TX_GRAPHQL_ENV ||
-  ZEKO_ARCHIVE_RELAY_GRAPHQL ||
-  ZEKO_ARCHIVE_GRAPHQL ||
-  ZEKO_GRAPHQL;
 const DARKPOOL_HOST = process.env.DARKPOOL_HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
 const AUTO_RUN_BACKGROUND_WORKERS = String(process.env.AUTO_RUN_BACKGROUND_WORKERS || 'false').toLowerCase() === 'true';
 const AUTO_RUN_PROOF_WORKER = String(process.env.AUTO_RUN_PROOF_WORKER || String(AUTO_RUN_BACKGROUND_WORKERS)).toLowerCase() === 'true';
@@ -85,29 +107,75 @@ const ZEKO_FAUCET_GITHUB_TOKEN = String(
 ).trim();
 const REAL_FUNDS_MODE = true;
 const ONCHAIN_SYNC_TTL_MS = Number.parseInt(process.env.ONCHAIN_SYNC_TTL_MS || '60000', 10);
-const ASSET_DECIMALS = (() => {
+function normalizeAssetMapKey(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function parseUpperNumberMap(jsonRaw, fallback) {
+  const result = { ...fallback };
   try {
-    const parsed = JSON.parse(process.env.ASSET_DECIMALS_JSON || '{}');
-    return {
-      tETH: Number.isFinite(Number(parsed.tETH)) ? Number(parsed.tETH) : 9,
-      tZEKO: Number.isFinite(Number(parsed.tZEKO)) ? Number(parsed.tZEKO) : 9,
-      tMINA: Number.isFinite(Number(parsed.tMINA)) ? Number(parsed.tMINA) : 9
-    };
+    const parsed = JSON.parse(jsonRaw || '{}');
+    for (const [key, value] of Object.entries(parsed || {})) {
+      if (!key) continue;
+      const normalized = normalizeAssetMapKey(key);
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) result[normalized] = numeric;
+    }
+  } catch {}
+  return result;
+}
+
+function parseUpperStringMap(jsonRaw, fallback) {
+  const result = { ...fallback };
+  try {
+    const parsed = JSON.parse(jsonRaw || '{}');
+    for (const [key, value] of Object.entries(parsed || {})) {
+      if (!key || typeof value !== 'string') continue;
+      result[normalizeAssetMapKey(key)] = value.trim();
+    }
+  } catch {}
+  return result;
+}
+
+function parseSupportedAssetPairs(jsonRaw) {
+  try {
+    const parsed = JSON.parse(jsonRaw || '[]');
+    if (!Array.isArray(parsed)) return null;
+    const normalized = parsed
+      .map((entry) => {
+        const symbol = typeof entry?.symbol === 'string' ? entry.symbol.trim() : '';
+        const baseAsset = typeof entry?.baseAsset === 'string' ? entry.baseAsset.trim() : '';
+        const quoteAsset = typeof entry?.quoteAsset === 'string' ? entry.quoteAsset.trim() : '';
+        if (!symbol || !baseAsset || !quoteAsset) return null;
+        const referencePrice = Number(entry?.referencePrice);
+        return {
+          symbol,
+          baseAsset,
+          quoteAsset,
+          baseTokenId: typeof entry?.baseTokenId === 'string' ? entry.baseTokenId.trim() : '',
+          quoteTokenId: typeof entry?.quoteTokenId === 'string' ? entry.quoteTokenId.trim() : '',
+          referencePrice: Number.isFinite(referencePrice) ? referencePrice : 1
+        };
+      })
+      .filter(Boolean);
+    return normalized.length ? normalized : null;
   } catch {
-    return { tETH: 9, tZEKO: 9, tMINA: 9 };
+    return null;
   }
+}
+
+async function deriveTokenIdFromAddress(tokenAddress58) {
+  const address = String(tokenAddress58 || '').trim();
+  if (!address) return '';
+  const [{ PublicKey, TokenId }] = await Promise.all([import('o1js')]);
+  return TokenId.toBase58(TokenId.derive(PublicKey.fromBase58(address)));
+}
+
+const ASSET_DECIMALS = (() => {
+  return parseUpperNumberMap(process.env.ASSET_DECIMALS_JSON || '{}', DEFAULT_ASSET_DECIMALS);
 })();
 const TOKEN_CONTRACT_ADDRESSES = (() => {
-  try {
-    const parsed = JSON.parse(process.env.TOKEN_CONTRACT_ADDRESSES_JSON || '{}');
-    return {
-      TETH: typeof parsed.tETH === 'string' ? parsed.tETH.trim() : '',
-      TZEKO: typeof parsed.tZEKO === 'string' ? parsed.tZEKO.trim() : '',
-      TMINA: typeof parsed.tMINA === 'string' ? parsed.tMINA.trim() : ''
-    };
-  } catch {
-    return { TETH: '', TZEKO: '', TMINA: '' };
-  }
+  return parseUpperStringMap(process.env.TOKEN_CONTRACT_ADDRESSES_JSON || '{}', DEFAULT_TOKEN_CONTRACT_ADDRESSES);
 })();
 const MAKER_API_KEY = process.env.MAKER_API_KEY || 'demo-maker-key';
 const SERVER_BUILD_ID = 'matcher-debug-v3';
@@ -164,7 +232,7 @@ const DA_BEARER_TOKEN = process.env.DA_BEARER_TOKEN || '';
 const DA_REQUIRE_ENCRYPTION = String(process.env.DA_REQUIRE_ENCRYPTION || 'true').toLowerCase() === 'true';
 const DA_INCLUDE_ORDER_SNAPSHOT = String(process.env.DA_INCLUDE_ORDER_SNAPSHOT || 'false').toLowerCase() === 'true';
 const DA_ENCRYPTION_KEY = process.env.DA_ENCRYPTION_KEY || ORDER_STATE_ENCRYPTION_KEY || ORDER_RECEIPT_SECRET;
-const ZEKO_DA_NETWORK = process.env.ZEKO_DA_NETWORK || 'testnet';
+const ZEKO_DA_NETWORK = process.env.ZEKO_DA_NETWORK || (IS_SEPOLIA_ZEKO ? 'zeko:testnet' : 'testnet');
 const ZEKO_DA_APP_ID = process.env.ZEKO_DA_APP_ID || 'shadowbook';
 const ZEKO_DA_SCHEMA = process.env.ZEKO_DA_SCHEMA || 'shadowbook.da.v1';
 const VAULT_DEPOSIT_ADDRESS = process.env.VAULT_DEPOSIT_ADDRESS || '';
@@ -672,7 +740,7 @@ function getPairConfigBySymbol(pairSymbol) {
 }
 
 function canonicalAssetKey(asset) {
-  return String(asset || '').trim().toUpperCase();
+  return normalizeAssetMapKey(asset);
 }
 
 function getKnownAssetConfigs() {
@@ -698,9 +766,16 @@ function getAssetConfig(asset) {
   return getKnownAssetConfigs().find((entry) => canonicalAssetKey(entry.asset) === key) || null;
 }
 
+function isNativeAsset(asset) {
+  const config = typeof asset === 'string' ? getAssetConfig(asset) : asset;
+  if (!config?.asset) return false;
+  return !String(TOKEN_CONTRACT_ADDRESSES[canonicalAssetKey(config.asset)] || '').trim();
+}
+
 function convertFromOnchainUnits(asset, rawTotal) {
   const n = Number(rawTotal || 0);
-  const decimals = Number.isFinite(ASSET_DECIMALS[asset]) ? ASSET_DECIMALS[asset] : 9;
+  const assetKey = canonicalAssetKey(asset);
+  const decimals = Number.isFinite(ASSET_DECIMALS[assetKey]) ? ASSET_DECIMALS[assetKey] : 9;
   return n / 10 ** decimals;
 }
 
@@ -811,21 +886,47 @@ async function buildVaultDepositTransaction({ wallet, tokenId, amount, memo, fee
   const recipient = PublicKey.fromBase58(VAULT_DEPOSIT_ADDRESS);
   const assetConfig = resolveKnownAsset({ tokenId });
   const assetKey = canonicalAssetKey(assetConfig.asset);
+  const nativeAsset = isNativeAsset(assetConfig);
   const tokenAddress58 = TOKEN_CONTRACT_ADDRESSES[assetKey];
-  if (!tokenAddress58) {
+  if (!nativeAsset && !tokenAddress58) {
     throw new Error(`missing token contract address for ${assetKey}; set TOKEN_CONTRACT_ADDRESSES_JSON in .env`);
   }
-  const tokenAddress = PublicKey.fromBase58(tokenAddress58);
-  const token = new FungibleToken(tokenAddress);
   const network = Mina.Network({
     networkId: ZEKO_NETWORK_ID,
     mina: ZEKO_GRAPHQL,
     archive: ZEKO_ARCHIVE_GRAPHQL || ZEKO_GRAPHQL
   });
   Mina.setActiveInstance(network);
+  await fetchAccount({ publicKey: sender });
+  if (nativeAsset) {
+    const tx = await Mina.transaction(
+      {
+        sender,
+        fee: UInt64.from(requireString(feeRaw || TX_FEE, 'feeRaw'))
+      },
+      async () => {
+        const payer = AccountUpdate.createSigned(sender);
+        payer.send({ to: recipient, amount: UInt64.from(requireString(amount, 'amount')) });
+      }
+    );
+    const feePayerUpdate = tx.feePayer;
+    if (feePayerUpdate?.body?.preconditions?.account?.nonce) {
+      feePayerUpdate.body.preconditions.account.nonce = { isSome: Bool(false), value: UInt32.from(0) };
+    }
+    if (feePayerUpdate?.body) {
+      feePayerUpdate.body.useFullCommitment = Bool(true);
+    }
+    await tx.prove();
+    return {
+      transaction: tx.toJSON(),
+      receiverNeedsTokenAccount: false,
+      nativeAsset: true
+    };
+  }
+  const tokenAddress = PublicKey.fromBase58(tokenAddress58);
+  const token = new FungibleToken(tokenAddress);
   if (!fungibleTokenCompilePromise) fungibleTokenCompilePromise = FungibleToken.compile();
   await fungibleTokenCompilePromise;
-  await fetchAccount({ publicKey: sender });
   const recipientNeedsTokenAccount = !(await doesOnchainTokenAccountExist(VAULT_DEPOSIT_ADDRESS, assetConfig.tokenId));
   const tx = await Mina.transaction(
     {
@@ -849,8 +950,13 @@ async function buildVaultDepositTransaction({ wallet, tokenId, amount, memo, fee
   await tx.prove();
   return {
     transaction: tx.toJSON(),
-    receiverNeedsTokenAccount: recipientNeedsTokenAccount
+    receiverNeedsTokenAccount: recipientNeedsTokenAccount,
+    nativeAsset: false
   };
+}
+
+function getDefaultPairSymbol() {
+  return Array.from(pairs.values())[0]?.symbol || DEFAULT_MARKET_DEFINITIONS[0]?.symbol || '';
 }
 
 async function graphqlRequest(query, variables = {}, endpoint = ZEKO_GRAPHQL) {
@@ -4048,9 +4154,45 @@ function computeStatusSnapshot(port) {
   };
 }
 
-function bootstrapMarkets() {
+async function bootstrapMarkets() {
+  pairs.clear();
   marketsById.clear();
   marketsByTokenKey.clear();
+  const configuredMarkets = parseSupportedAssetPairs(process.env.SUPPORTED_ASSET_PAIRS_JSON || '');
+  const sourceMarkets = configuredMarkets || DEFAULT_MARKET_DEFINITIONS;
+  for (const rawMarket of sourceMarkets) {
+    const market = { ...rawMarket };
+    const baseAssetKey = canonicalAssetKey(market.baseAsset);
+    const quoteAssetKey = canonicalAssetKey(market.quoteAsset);
+    if (!market.baseTokenId) {
+      market.baseTokenId = await deriveTokenIdFromAddress(TOKEN_CONTRACT_ADDRESSES[baseAssetKey]);
+    }
+    if (!market.quoteTokenId) {
+      market.quoteTokenId = await deriveTokenIdFromAddress(TOKEN_CONTRACT_ADDRESSES[quoteAssetKey]);
+    }
+    if (!market.baseTokenId) {
+      throw new Error(`missing baseTokenId for ${market.symbol}; set SUPPORTED_ASSET_PAIRS_JSON or token address for ${market.baseAsset}`);
+    }
+    if (!market.quoteTokenId) {
+      throw new Error(`missing quoteTokenId for ${market.symbol}; set SUPPORTED_ASSET_PAIRS_JSON or token address for ${market.quoteAsset}`);
+    }
+    if (IS_SEPOLIA_ZEKO) {
+      const expectedBaseTokenId = baseAssetKey === 'SETH' ? DEFAULT_NATIVE_TOKEN_ID : DEFAULT_SZEKO_TOKEN_ID;
+      const expectedQuoteTokenId = quoteAssetKey === 'SETH' ? DEFAULT_NATIVE_TOKEN_ID : DEFAULT_SZEKO_TOKEN_ID;
+      if (
+        !['SETH', 'SZEKO'].includes(baseAssetKey) ||
+        !['SETH', 'SZEKO'].includes(quoteAssetKey) ||
+        market.baseTokenId !== expectedBaseTokenId ||
+        market.quoteTokenId !== expectedQuoteTokenId
+      ) {
+        throw new Error(
+          `Sepolia requires an sETH/sZEKO market using the configured native and sZEKO token IDs; ` +
+          `replace SUPPORTED_ASSET_PAIRS_JSON instead of reusing Mina-testnet pairs`
+        );
+      }
+    }
+    pairs.set(String(market.symbol).trim().toUpperCase(), market);
+  }
   for (const market of pairs.values()) {
     if (!market.marketId) {
       market.marketId = makeMarketId(market.baseTokenId, market.quoteTokenId);
@@ -4061,17 +4203,19 @@ function bootstrapMarkets() {
 }
 
 async function main() {
-  bootstrapMarkets();
+  await bootstrapMarkets();
   const landingPagePath = path.resolve(projectRoot, 'public', 'index.html');
   const landingPreviewPagePath = path.resolve(projectRoot, 'public', 'landing-preview.html');
   const pagePath = path.resolve(projectRoot, 'public', 'darkpool.html');
   const partnerPagePath = path.resolve(projectRoot, 'public', 'partner-frontend.html');
   const assetsRoot = path.resolve(projectRoot, 'public', 'assets');
   const sdkRoot = path.resolve(projectRoot, 'public', 'sdk');
-  settlementBatchesPath = path.resolve(projectRoot, 'data', 'settlement-batches.json');
-  engineStatePath = path.resolve(projectRoot, 'data', 'engine-state.json');
-  auditLogPath = path.resolve(projectRoot, 'data', 'fairness-audit.jsonl');
-  earlyAccessStatePath = path.resolve(projectRoot, 'data', 'early-access-state.json');
+  const defaultDataDir = path.resolve(projectRoot, 'data', IS_SEPOLIA_ZEKO ? 'zeko-sepolia' : '.');
+  const dataDir = path.resolve(process.env.DARKPOOL_DATA_DIR || defaultDataDir);
+  settlementBatchesPath = path.join(dataDir, 'settlement-batches.json');
+  engineStatePath = path.join(dataDir, 'engine-state.json');
+  auditLogPath = path.join(dataDir, 'fairness-audit.jsonl');
+  earlyAccessStatePath = path.join(dataDir, 'early-access-state.json');
   await mkdir(path.dirname(auditLogPath), { recursive: true });
   await loadAuditHeadFromFile();
   await loadSettlementBatches();
@@ -4266,7 +4410,7 @@ async function main() {
       if (req.method === 'GET' && url.pathname === '/api/darkpool/book') {
         const pair = resolveMarket({
           marketId: url.searchParams.get('marketId'),
-          pair: url.searchParams.get('pair') || 'tETH/tZEKO',
+          pair: url.searchParams.get('pair') || getDefaultPairSymbol(),
           baseTokenId: url.searchParams.get('baseTokenId'),
           quoteTokenId: url.searchParams.get('quoteTokenId')
         });
@@ -4286,7 +4430,7 @@ async function main() {
       if (req.method === 'GET' && url.pathname === '/api/darkpool/book/hash') {
         const pair = resolveMarket({
           marketId: url.searchParams.get('marketId'),
-          pair: url.searchParams.get('pair') || 'tETH/tZEKO',
+          pair: url.searchParams.get('pair') || getDefaultPairSymbol(),
           baseTokenId: url.searchParams.get('baseTokenId'),
           quoteTokenId: url.searchParams.get('quoteTokenId')
         });
@@ -4323,7 +4467,7 @@ async function main() {
       if (req.method === 'GET' && url.pathname === '/api/darkpool/candles') {
         const market = resolveMarket({
           marketId: url.searchParams.get('marketId'),
-          pair: url.searchParams.get('pair') || 'tETH/tZEKO',
+          pair: url.searchParams.get('pair') || getDefaultPairSymbol(),
           baseTokenId: url.searchParams.get('baseTokenId'),
           quoteTokenId: url.searchParams.get('quoteTokenId')
         });
@@ -5198,7 +5342,7 @@ async function main() {
         const resolved = resolveKnownAsset({ asset: body.asset, tokenId: body.tokenId });
         const wallet = requireString(body.wallet, 'wallet');
         const amount = requirePositiveNumber(body.amount, 'amount');
-        const rawAmount = decimalToRawUnitsString(amount, ASSET_DECIMALS[resolved.asset] ?? 9);
+        const rawAmount = decimalToRawUnitsString(amount, ASSET_DECIMALS[canonicalAssetKey(resolved.asset)] ?? 9);
         const suggestedFee = await getSuggestedSequencerFeeRaw();
         const memo =
           typeof body.memo === 'string' && body.memo.trim()

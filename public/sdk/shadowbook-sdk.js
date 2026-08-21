@@ -48,8 +48,8 @@
       } else if (market.pair) {
         query.push('pair=' + encodeURIComponent(String(market.pair)));
       }
-    } else {
-      query.push('pair=' + encodeURIComponent(String(market || 'tETH/tZEKO')));
+    } else if (market) {
+      query.push('pair=' + encodeURIComponent(String(market)));
     }
     query.push('levels=' + encodeURIComponent(String(l)));
     return this.request('/api/darkpool/book?' + query.join('&'));
