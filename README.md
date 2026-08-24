@@ -1,11 +1,12 @@
 # Private Order Book
 
-ShadowBook is a private order book / dark pool demo built on Zeko with:
+ShadowBook is a private order book / dark pool demo built on Zeko Ethereum Sepolia with:
 - note-backed private collateral
 - public and private order visibility modes
 - off-chain matching
 - on-chain settlement anchoring through a zkApp
 - a lean settlement zkApp as the default hosted path
+- a single supported market: `sETH/sZEKO`
 
 ## What Works
 
@@ -31,6 +32,8 @@ pnpm darkpool:serve
 Open:
 - [Trading UI](http://127.0.0.1:8791/darkpool)
 - [Partner Frontend Example](http://127.0.0.1:8791/partner)
+
+The server is Sepolia-only. It requires `ZEKO_GRAPHQL=https://sepolia.zeko.io/graphql` and stores runtime state under `data/zeko-sepolia` by default.
 
 ## Recommended Runtime Modes
 

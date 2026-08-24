@@ -14,7 +14,7 @@ import { FungibleToken, FungibleTokenAdmin } from 'mina-fungible-token';
 import { appendFile, writeFile } from 'node:fs/promises';
 
 const GRAPHQL = process.env.ZEKO_GRAPHQL || 'https://sepolia.zeko.io/graphql';
-const NETWORK_ID = process.env.ZEKO_NETWORK_ID || 'testnet';
+const NETWORK_ID = 'zeko';
 const SYMBOL = process.env.TOKEN_SYMBOL || 'sZEKO';
 const DECIMALS = Number.parseInt(process.env.TOKEN_DECIMALS || '9', 10);
 const SUPPLY_WHOLE = process.env.TOKEN_SUPPLY_WHOLE || '100000';

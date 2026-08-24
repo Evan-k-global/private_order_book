@@ -1,10 +1,10 @@
 const API_BASE = (process.env.DARKPOOL_API || 'http://127.0.0.1:8791').replace(/\/$/, '');
-const PAIR = (process.env.BOT_PAIR || 'tETH/tZEKO').toUpperCase();
+const PAIR = (process.env.BOT_PAIR || 'sETH/sZEKO').toUpperCase();
 const MARKET_ID = process.env.BOT_MARKET_ID || '';
-const BASE_TOKEN_ID = process.env.BOT_BASE_TOKEN_ID || 'wpWnRKT383VPM2TWtBWs8R4i927SKUgzAycsSs3AyvyriGXyP2';
-const QUOTE_TOKEN_ID = process.env.BOT_QUOTE_TOKEN_ID || 'x3jovPY75iFmbZ5kTfxZmNmEQ6874mmBu3jufom1QsxMNqPx27';
-const BASE_ASSET = process.env.BOT_BASE_ASSET || 'tETH';
-const QUOTE_ASSET = process.env.BOT_QUOTE_ASSET || 'tZEKO';
+const BASE_TOKEN_ID = process.env.BOT_BASE_TOKEN_ID || 'wSHV2S4qX9jFsLjQo8r1BsMLH2ZRKsZx6EJd1sbozGPieEC4Jf';
+const QUOTE_TOKEN_ID = process.env.BOT_QUOTE_TOKEN_ID || 'xpAptwG79jEStACsCv9C6yXUBmKbvurUo8GsTPYapn9QWB5zE5';
+const BASE_ASSET = process.env.BOT_BASE_ASSET || 'sETH';
+const QUOTE_ASSET = process.env.BOT_QUOTE_ASSET || 'sZEKO';
 const MAKER_WALLET = process.env.BOT_MAKER_WALLET || 'B62qbot_maker_wallet';
 const TAKER_WALLET = process.env.BOT_TAKER_WALLET || 'B62qbot_taker_wallet';
 const MAKER_API_KEY = process.env.MAKER_API_KEY || 'demo-maker-key';

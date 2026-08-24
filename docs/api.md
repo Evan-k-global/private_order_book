@@ -4,7 +4,7 @@
 
 - `GET /api/darkpool/markets`
 - `GET /api/darkpool/book?marketId=...&levels=20`
-- `GET /api/darkpool/book?pair=tETH/tZEKO&levels=20`
+- `GET /api/darkpool/book?pair=sETH/sZEKO&levels=20`
 - `GET /api/darkpool/book/hash?marketId=...`
 - `GET /api/darkpool/trades`
 - `GET /api/darkpool/candles`

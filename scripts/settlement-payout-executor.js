@@ -48,14 +48,11 @@ function parseUpperNumberMap(jsonRaw, fallback = {}) {
   return result;
 }
 
-const IS_SEPOLIA_ZEKO = ZEKO_GRAPHQL.includes('sepolia.zeko.io');
-const DEFAULT_TOKEN_CONTRACT_ADDRESSES = IS_SEPOLIA_ZEKO
-  ? {
-      SETH: '',
-      SZEKO: 'B62qpCuSDoTuL8dUcNfuoLoas8A77gRHJTp4WVe5NF2phXbQUNwNZ3W'
-    }
-  : {};
-const DEFAULT_ASSET_DECIMALS = IS_SEPOLIA_ZEKO ? { SETH: 9, SZEKO: 9 } : {};
+const DEFAULT_TOKEN_CONTRACT_ADDRESSES = {
+  SETH: '',
+  SZEKO: 'B62qpCuSDoTuL8dUcNfuoLoas8A77gRHJTp4WVe5NF2phXbQUNwNZ3W'
+};
+const DEFAULT_ASSET_DECIMALS = { SETH: 9, SZEKO: 9 };
 
 function isNativeAsset(asset) {
   return !String(TOKEN_CONTRACT_ADDRESSES[normalizeAsset(asset)] || '').trim();

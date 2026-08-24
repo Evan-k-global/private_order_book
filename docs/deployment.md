@@ -4,6 +4,8 @@
 
 For demo-scale usage, this repo can run as a single Render web service.
 
+This deployment is intentionally Zeko Ethereum Sepolia-only. There is no second-network runtime, network selector, or multi-network gateway.
+
 ### Build command
 
 ```bash
@@ -30,9 +32,13 @@ REQUIRE_CACHED_PRIVATE_STATE_PROOF=false
 ALLOW_INLINE_PRIVATE_STATE_PROVING=false
 ```
 
-Plus your existing chain / app secrets:
+Plus the Sepolia chain and app configuration:
 
-- `ZEKO_GRAPHQL`
+- `ZEKO_GRAPHQL=https://sepolia.zeko.io/graphql`
+- `ZEKO_NETWORK_ID=zeko`
+- `SUPPORTED_ASSET_PAIRS_JSON` for `sETH/sZEKO`
+- `ASSET_DECIMALS_JSON` for `sETH` and `sZEKO`
+- `TOKEN_CONTRACT_ADDRESSES_JSON` with native `sETH` and the whitelisted `sZEKO` contract
 - `DEPLOYER_PRIVATE_KEY`
 - `ZKAPP_PRIVATE_KEY`
 - `ZKAPP_PUBLIC_KEY`
@@ -41,7 +47,10 @@ Plus your existing chain / app secrets:
 - `ORDER_RECEIPT_SECRET`
 - `MAKER_API_KEY`
 - `OPERATOR_PANEL_ADMIN_KEY`
-- `TOKEN_CONTRACT_ADDRESSES_JSON`
+- `VAULT_DEPOSIT_ADDRESS`
+- `ORDER_STATE_ENCRYPTION_KEY`
+- `INTERNAL_SERVICE_SECRET`
+- `ZEKO_SETTLEMENT_GRAPHQL`
 - `EARLY_ACCESS_GATE_ENABLED` and `EARLY_ACCESS_CODES` if you want the landing-page invite gate enabled
 - any DA relay envs you actually use
 

@@ -1192,50 +1192,14 @@
         margin-left: auto;
         min-width: 320px;
       }
-      .network-controls {
-        display: grid;
-        gap: 4px;
-        justify-items: end;
-      }
-      .network-label {
-        margin: 0;
-        font-size: 10px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #7f96ad;
-      }
-      .network-controls-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-      .network-select {
-        min-width: 212px;
-        width: auto;
-        padding: 6px 28px 6px 10px;
-        border-radius: 999px;
-        border: 1px solid #2c4157;
-        background: #0b1420;
-        color: #d7e6f5;
-      }
-      .network-sync-btn {
-        width: auto;
-        min-width: 106px;
+      .network-badge {
         padding: 6px 12px;
+        border: 1px solid #2c4157;
         border-radius: 999px;
-      }
-      .network-status {
-        max-width: 320px;
-        text-align: right;
+        color: #9fb6cc;
         font-size: 11px;
-        line-height: 1.4;
-        color: #8ea8c0;
-      }
-      .network-status.warn {
-        color: #f2c572;
-      }
-      .network-status.ok {
-        color: #92e4b4;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
       }
       .wallet-btn {
         width: auto;
@@ -1349,13 +1313,6 @@
           margin-left: 0;
           justify-content: flex-start;
         }
-        .network-controls {
-          justify-items: start;
-        }
-        .network-status {
-          max-width: none;
-          text-align: left;
-        }
         .chart-topline {
           grid-template-columns: 1fr 1fr;
         }
@@ -1420,14 +1377,6 @@
         }
         .top-tabs {
           gap: 6px;
-        }
-        .network-controls-row {
-          width: 100%;
-          flex-wrap: wrap;
-        }
-        .network-select,
-        .network-sync-btn {
-          width: 100%;
         }
         .price-chart-card,
         .order-book-card,
@@ -1542,16 +1491,7 @@
         <button type="button" class="ghost wallet-btn" id="globalConnectWalletBtn">Connect Wallet</button>
       </div>
       <div class="header-actions">
-        <div class="network-controls">
-          <label class="network-label" for="walletNetworkSelect">Wallet network</label>
-          <div class="network-controls-row">
-            <select id="walletNetworkSelect" class="network-select">
-              <option value="zekoMinaTestnet">Zeko Mina Testnet</option>
-              <option value="zekoEthereumTestnet">Zeko Ethereum Testnet</option>
-            </select>
-            <button type="button" class="ghost network-sync-btn" id="walletNetworkSyncBtn">Sync Network</button>
-          </div>
-        </div>
+        <div class="network-badge">Zeko Ethereum Sepolia</div>
       </div>
     </div>
     <div id="tradingPanel" class="app">
@@ -1993,59 +1933,16 @@
       let serverTokenContractAddresses = {};
       const walletSyncTimes = new Map();
       const WALLET_SYNC_COOLDOWN_MS = 20000;
-      const walletNetworkStorageKey = 'shadowbook:selected-wallet-network:v1';
-      const walletNetworks = {
-        zekoMinaTestnet: {
-          key: 'zekoMinaTestnet',
-          label: 'Zeko Mina Testnet',
-          auroMode: 'builtin',
-          auroNetworkId: 'zeko:testnet',
-          graphqlUrl: 'https://testnet.zeko.io/graphql',
-          ethereumChainId: null
-        },
-        zekoEthereumTestnet: {
-          key: 'zekoEthereumTestnet',
-          label: 'Zeko Ethereum Testnet',
-          auroMode: 'custom',
-          auroNetworkName: 'Zeko Ethereum Testnet',
-          graphqlUrl: 'https://sepolia.zeko.io/graphql',
-          ethereumChainId: '0xaa36a7'
-        }
+      const sepoliaWalletNetwork = {
+        key: 'zekoEthereumSepolia',
+        label: 'Zeko Ethereum Sepolia',
+        auroNetworkName: 'Zeko Ethereum Sepolia',
+        graphqlUrl: 'https://sepolia.zeko.io/graphql',
+        ethereumChainId: '0xaa36a7'
       };
-      let selectedWalletNetworkKey = loadSelectedWalletNetworkKey();
-      let serverWalletNetwork = null;
-
-      function loadSelectedWalletNetworkKey() {
-        try {
-          const stored = window.localStorage.getItem(walletNetworkStorageKey);
-          if (stored && walletNetworks[stored]) return stored;
-        } catch {}
-        return 'zekoMinaTestnet';
-      }
-
-      function saveSelectedWalletNetworkKey(nextKey) {
-        if (!walletNetworks[nextKey]) return;
-        selectedWalletNetworkKey = nextKey;
-        try {
-          window.localStorage.setItem(walletNetworkStorageKey, nextKey);
-        } catch {}
-      }
-
-      function getSelectedWalletNetwork() {
-        return walletNetworks[selectedWalletNetworkKey] || walletNetworks.zekoMinaTestnet;
-      }
-
-      function isSepoliaDisplaySelected() {
-        return getSelectedWalletNetwork()?.key === 'zekoEthereumTestnet';
-      }
 
       function formatDisplayAsset(asset) {
         const value = String(asset || '').trim();
-        if (!value) return value;
-        if (!isSepoliaDisplaySelected()) return value;
-        const key = value.toUpperCase();
-        if (key === 'TETH' || key === 'SETH' || key === 'TMINA') return 'sETH';
-        if (key === 'TZEKO' || key === 'SZEKO') return 'sZEKO';
         return value;
       }
 
@@ -2076,12 +1973,7 @@
         return String(input?.dataset?.sourcePair || input?.value || '').trim();
       }
 
-      function updateWalletNetworkUi() {
-        const select = document.getElementById('walletNetworkSelect');
-        if (select && select.value !== selectedWalletNetworkKey) select.value = selectedWalletNetworkKey;
-      }
-
-      function applySelectedNetworkDisplayDefaults() {
+      function applyMarketDisplayDefaults() {
         const selectedMarketId = document.getElementById('ordPair')?.value || '';
         const currentMarket = getMarketById(selectedMarketId) || knownMarkets[0] || null;
         if (currentMarket) {
@@ -2090,7 +1982,7 @@
           updateOrderIntent(currentMarket);
           return;
         }
-        setMakerPairDisplay(isSepoliaDisplaySelected() ? 'sETH/sZEKO' : 'tETH/tZEKO');
+        setMakerPairDisplay('sETH/sZEKO');
       }
 
       async function auroRequest(methodName, params) {
@@ -2113,16 +2005,17 @@
         }
       }
 
-      async function ensureEthereumCompanionNetwork(config) {
+      async function ensureEthereumCompanionNetwork(config, requestAccounts = false) {
         if (!config?.ethereumChainId) return { attempted: false, switched: false };
         const provider = window.ethereum;
         if (!provider?.request) return { attempted: false, switched: false };
         try {
+          const accounts = await provider.request({ method: requestAccounts ? 'eth_requestAccounts' : 'eth_accounts' });
           await provider.request({
             method: 'wallet_switchEthereumChain',
             params: [{ chainId: config.ethereumChainId }]
           });
-          return { attempted: true, switched: true };
+          return { attempted: true, switched: true, account: accounts?.[0] || null };
         } catch (error) {
           const code = Number(error?.code || 0);
           if (code === 4902) {
@@ -2142,43 +2035,26 @@
                 }
               ]
             });
-            return { attempted: true, switched: true };
+            return { attempted: true, switched: true, account: null };
           }
           return { attempted: true, switched: false, error: String(error?.message || error) };
         }
       }
 
-      async function syncSelectedWalletNetwork(options = {}) {
-        const { interactive = true } = options;
+      async function syncSepoliaWalletNetwork(options = {}) {
+        const { requestEthereumAccounts = false } = options;
         const provider = window.mina;
-        const selected = getSelectedWalletNetwork();
         if (!provider) {
-          updateWalletNetworkUi();
           throw new Error('No Mina wallet provider found in browser');
         }
-        let auroResult = null;
-        if (selected.auroMode === 'builtin') {
-          auroResult = await auroRequest('switchChain', { networkID: selected.auroNetworkId });
-        } else {
-          auroResult = await auroRequest('addChain', {
-            url: selected.graphqlUrl,
-            name: selected.auroNetworkName
-          });
-        }
+        const auroResult = await auroRequest('addChain', {
+          url: sepoliaWalletNetwork.graphqlUrl,
+          name: sepoliaWalletNetwork.auroNetworkName
+        });
         const currentNetwork = await requestAuroNetworkInfo();
-        const ethereumResult = await ensureEthereumCompanionNetwork(selected);
-        if (interactive) {
-          setText('orderOut', {
-            ok: true,
-            requestedWalletNetwork: selected.label,
-            auroResult,
-            auroNetwork: currentNetwork,
-            ethereumCompanion: ethereumResult,
-            serverWalletNetwork
-          });
-        }
+        const ethereumResult = await ensureEthereumCompanionNetwork(sepoliaWalletNetwork, requestEthereumAccounts);
         return {
-          requestedWalletNetwork: selected,
+          requestedWalletNetwork: sepoliaWalletNetwork,
           auroResult,
           auroNetwork: currentNetwork,
           ethereumCompanion: ethereumResult
@@ -2357,7 +2233,7 @@
         if (!select || !meta) return;
         const opt = select.options[select.selectedIndex];
         if (!opt) {
-          meta.textContent = `Supported assets: ${isSepoliaDisplaySelected() ? 'sETH, sZEKO' : 'tETH, tZEKO, tMINA'}`;
+          meta.textContent = 'Supported assets: sETH, sZEKO';
           return;
         }
         const tokenId = opt.getAttribute('data-token-id') || '';
@@ -3038,14 +2914,15 @@
         const btn = document.getElementById('globalConnectWalletBtn');
         if (!btn) return;
         if (!walletConnected) {
+          btn.hidden = false;
           btn.textContent = 'Connect Wallet';
           btn.classList.remove('connected');
           btn.disabled = false;
           btn.title = '';
           return;
         }
+        btn.hidden = true;
         const w = String(document.getElementById('ordWallet')?.value || '').trim();
-        btn.textContent = 'Wallet Connected';
         btn.classList.add('connected');
         btn.disabled = false;
         btn.title = w || '';
@@ -3082,9 +2959,12 @@
         } else {
           throw new Error('Connected wallet provider does not support account requests');
         }
+        if (typeof provider.getAccounts === 'function') {
+          const activeAccounts = await provider.getAccounts();
+          if (Array.isArray(activeAccounts) && activeAccounts.length) accounts = activeAccounts;
+        }
         const wallet = Array.isArray(accounts) ? accounts[0] : accounts;
         if (!wallet || typeof wallet !== 'string') throw new Error('Wallet did not return an address');
-        await syncSelectedWalletNetwork({ interactive: false });
 
         const targets = ['ordWallet', 'activityWallet', 'chainWallet', 'noteWallet'];
         for (const id of targets) {
@@ -3092,18 +2972,30 @@
           if (el) el.value = wallet;
         }
 
-        await sdk.syncOnchainBalance({ wallet });
-        walletSyncTimes.set(wallet, Date.now());
         walletConnected = true;
         updateWalletButtonState();
         updateOperatorPanelState();
-        setText('orderOut', { ok: true, connectedWallet: wallet, realFundsMode });
+        const connectionWarnings = [];
+        try {
+          await syncSepoliaWalletNetwork({ requestEthereumAccounts: true });
+        } catch (error) {
+          connectionWarnings.push(`network switch unavailable: ${String(error?.message || error)}`);
+        }
+        try {
+          await sdk.syncOnchainBalance({ wallet });
+          walletSyncTimes.set(wallet, Date.now());
+        } catch (error) {
+          connectionWarnings.push(`on-chain sync unavailable: ${String(error?.message || error)}`);
+        }
         const activityView = document.getElementById('activityView');
         if (activityView) activityView.value = 'your';
-        await refreshNoteAssetOptions();
-        await refreshNotesPortfolio();
-        await refreshPretradeChecklist();
-        await refreshActivity();
+        await Promise.allSettled([
+          refreshNoteAssetOptions(),
+          refreshNotesPortfolio(),
+          refreshPretradeChecklist(),
+          refreshActivity()
+        ]);
+        if (connectionWarnings.length) console.warn('[wallet] connected with deferred sync', connectionWarnings);
       }
 
       async function syncWalletIfNeeded(wallet, force = false) {
@@ -4857,32 +4749,6 @@
       document.getElementById('tabFunding').onclick = () => activateTab('funding');
       document.getElementById('welcomeDismissBtn').onclick = dismissWelcomeOverlay;
       document.getElementById('welcomeGotItBtn').onclick = dismissWelcomeOverlay;
-      document.getElementById('walletNetworkSelect').onchange = async (event) => {
-        const nextKey = String(event?.target?.value || '').trim();
-        if (!walletNetworks[nextKey]) return;
-        saveSelectedWalletNetworkKey(nextKey);
-        updateWalletNetworkUi();
-        applySelectedNetworkDisplayDefaults();
-        updateSelectedNoteAssetMeta();
-        refreshNoteAssetOptions().catch(() => {});
-        refreshActivity().catch(() => {});
-        refreshTrades().catch(() => {});
-        if (walletConnected) {
-          try {
-            await syncSelectedWalletNetwork({ interactive: true });
-          } catch (error) {
-            setText('orderOut', String(error));
-          }
-        }
-      };
-      document.getElementById('walletNetworkSyncBtn').onclick = async () => {
-        try {
-          await syncSelectedWalletNetwork({ interactive: true });
-        } catch (error) {
-          setText('orderOut', String(error));
-        }
-      };
-
       (async () => {
         try {
           syncHeaderOffset();
@@ -4890,16 +4756,15 @@
           requestAnimationFrame(syncHeaderOffset);
           activateTab('trading');
           maybeShowWelcomeOverlay();
-          applySelectedNetworkDisplayDefaults();
+          applyMarketDisplayDefaults();
           syncFrontendIdFromUi();
           const status = await sdk.getStatus();
-          serverWalletNetwork = status?.server?.walletNetwork || null;
           serverTokenContractAddresses = status?.server?.tokenContractAddresses || {};
           realFundsMode = Boolean(status?.server?.realFundsMode);
           requireOnchainDepositTx = Boolean(status?.server?.requireOnchainDepositTx);
           vaultDepositAddress = String(status?.server?.vaultDepositAddress || '');
           updateWalletNetworkUi();
-          applySelectedNetworkDisplayDefaults();
+          applyMarketDisplayDefaults();
           updateFundingHint();
           updateNoteDepositHint();
           setText(

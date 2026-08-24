@@ -12,9 +12,8 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 const require = createRequire(import.meta.url);
 
-const ZEKO_GRAPHQL = process.env.ZEKO_GRAPHQL || '';
-const IS_SEPOLIA_ZEKO = ZEKO_GRAPHQL.includes('sepolia.zeko.io');
-const ZEKO_NETWORK_ID = process.env.ZEKO_NETWORK_ID || 'testnet';
+const ZEKO_GRAPHQL = process.env.ZEKO_GRAPHQL || 'https://sepolia.zeko.io/graphql';
+const ZEKO_NETWORK_ID = 'zeko';
 const ZEKO_TX_GRAPHQL_ENV = process.env.ZEKO_TX_GRAPHQL || '';
 const ZEKO_ARCHIVE_GRAPHQL = process.env.ZEKO_ARCHIVE_GRAPHQL || '';
 const ZEKO_ARCHIVE_RELAY_GRAPHQL = process.env.ZEKO_ARCHIVE_RELAY_GRAPHQL || '';
@@ -25,48 +24,21 @@ const ZEKO_TX_GRAPHQL =
   ZEKO_GRAPHQL;
 const DEFAULT_NATIVE_TOKEN_ID = 'wSHV2S4qX9jFsLjQo8r1BsMLH2ZRKsZx6EJd1sbozGPieEC4Jf';
 const DEFAULT_SZEKO_TOKEN_ID = 'xpAptwG79jEStACsCv9C6yXUBmKbvurUo8GsTPYapn9QWB5zE5';
-const DEFAULT_MARKET_DEFINITIONS = IS_SEPOLIA_ZEKO
-  ? [
-      {
-        symbol: 'sETH/sZEKO',
-        baseAsset: 'sETH',
-        quoteAsset: 'sZEKO',
-        baseTokenId: DEFAULT_NATIVE_TOKEN_ID,
-        quoteTokenId: DEFAULT_SZEKO_TOKEN_ID,
-        referencePrice: 12
-      }
-    ]
-  : [
-      {
-        symbol: 'tETH/tZEKO',
-        baseAsset: 'tETH',
-        quoteAsset: 'tZEKO',
-        baseTokenId: 'wpWnRKT383VPM2TWtBWs8R4i927SKUgzAycsSs3AyvyriGXyP2',
-        quoteTokenId: 'x3jovPY75iFmbZ5kTfxZmNmEQ6874mmBu3jufom1QsxMNqPx27',
-        referencePrice: 12
-      },
-      {
-        symbol: 'tZEKO/tMINA',
-        baseAsset: 'tZEKO',
-        quoteAsset: 'tMINA',
-        baseTokenId: 'x3jovPY75iFmbZ5kTfxZmNmEQ6874mmBu3jufom1QsxMNqPx27',
-        quoteTokenId: DEFAULT_NATIVE_TOKEN_ID,
-        referencePrice: 0.08333333
-      }
-    ];
-const DEFAULT_ASSET_DECIMALS = IS_SEPOLIA_ZEKO
-  ? { SETH: 9, SZEKO: 9 }
-  : { TETH: 9, TZEKO: 9, TMINA: 9 };
-const DEFAULT_TOKEN_CONTRACT_ADDRESSES = IS_SEPOLIA_ZEKO
-  ? {
-      SETH: '',
-      SZEKO: 'B62qpCuSDoTuL8dUcNfuoLoas8A77gRHJTp4WVe5NF2phXbQUNwNZ3W'
-    }
-  : {
-      TETH: 'B62qpmXGkHW2hK6jgy1CcEFW3j2vbr1EamLef744ot3qhxDinLqgUXH',
-      TZEKO: 'B62qjUhPDbMskxMduyzkyGnK6LZwHksuuYPRjyF4owJM7UWLGJynN36',
-      TMINA: ''
-    };
+const DEFAULT_MARKET_DEFINITIONS = [
+  {
+    symbol: 'sETH/sZEKO',
+    baseAsset: 'sETH',
+    quoteAsset: 'sZEKO',
+    baseTokenId: DEFAULT_NATIVE_TOKEN_ID,
+    quoteTokenId: DEFAULT_SZEKO_TOKEN_ID,
+    referencePrice: 12
+  }
+];
+const DEFAULT_ASSET_DECIMALS = { SETH: 9, SZEKO: 9 };
+const DEFAULT_TOKEN_CONTRACT_ADDRESSES = {
+  SETH: '',
+  SZEKO: 'B62qpCuSDoTuL8dUcNfuoLoas8A77gRHJTp4WVe5NF2phXbQUNwNZ3W'
+};
 const pairs = new Map();
 const marketsById = new Map();
 const marketsByTokenKey = new Map();
@@ -187,25 +159,13 @@ const SETTLEMENT_PROCEEDS_AS_NOTES =
   String(process.env.SETTLEMENT_PROCEEDS_AS_NOTES || String(!process.env.RENDER)).toLowerCase() === 'true';
 const ORDER_RECEIPT_SECRET = process.env.ORDER_RECEIPT_SECRET || 'shadowbook-receipt-secret';
 
-function detectWalletNetworkConfig() {
-  const endpoint = String(ZEKO_GRAPHQL || '').trim();
-  if (endpoint.includes('sepolia.zeko.io')) {
-    return {
-      key: 'zekoEthereumTestnet',
-      label: 'Zeko Ethereum Testnet',
-      networkId: 'testnet',
-      graphqlUrl: endpoint,
-      chainType: 'zeko-on-ethereum'
-    };
-  }
-  return {
-    key: 'zekoMinaTestnet',
-    label: 'Zeko Mina Testnet',
-    networkId: String(ZEKO_NETWORK_ID || 'testnet'),
-    graphqlUrl: endpoint,
-    chainType: 'zeko'
-  };
-}
+const WALLET_NETWORK_CONFIG = {
+  key: 'zekoEthereumSepolia',
+  label: 'Zeko Ethereum Sepolia',
+  networkId: ZEKO_NETWORK_ID,
+  graphqlUrl: ZEKO_GRAPHQL,
+  chainType: 'zeko-on-ethereum'
+};
 const INTERNAL_SERVICE_SECRET = String(process.env.INTERNAL_SERVICE_SECRET || ORDER_RECEIPT_SECRET || 'shadowbook-internal-service').trim();
 const EARLY_ACCESS_COOKIE_NAME = String(process.env.EARLY_ACCESS_COOKIE_NAME || 'shadowbook_access').trim() || 'shadowbook_access';
 const EARLY_ACCESS_COOKIE_SECRET = String(process.env.EARLY_ACCESS_COOKIE_SECRET || ORDER_RECEIPT_SECRET || 'shadowbook-access-secret');
@@ -232,7 +192,7 @@ const DA_BEARER_TOKEN = process.env.DA_BEARER_TOKEN || '';
 const DA_REQUIRE_ENCRYPTION = String(process.env.DA_REQUIRE_ENCRYPTION || 'true').toLowerCase() === 'true';
 const DA_INCLUDE_ORDER_SNAPSHOT = String(process.env.DA_INCLUDE_ORDER_SNAPSHOT || 'false').toLowerCase() === 'true';
 const DA_ENCRYPTION_KEY = process.env.DA_ENCRYPTION_KEY || ORDER_STATE_ENCRYPTION_KEY || ORDER_RECEIPT_SECRET;
-const ZEKO_DA_NETWORK = process.env.ZEKO_DA_NETWORK || (IS_SEPOLIA_ZEKO ? 'zeko:testnet' : 'testnet');
+const ZEKO_DA_NETWORK = process.env.ZEKO_DA_NETWORK || 'zeko:testnet';
 const ZEKO_DA_APP_ID = process.env.ZEKO_DA_APP_ID || 'shadowbook';
 const ZEKO_DA_SCHEMA = process.env.ZEKO_DA_SCHEMA || 'shadowbook.da.v1';
 const VAULT_DEPOSIT_ADDRESS = process.env.VAULT_DEPOSIT_ADDRESS || '';
@@ -1729,8 +1689,7 @@ async function getMinaSignerClient() {
     const signerPath = path.join(path.dirname(o1jsEntry), 'mina-signer', 'mina-signer.js');
     minaSignerClientPromise = import(pathToFileURL(signerPath).href).then((mod) => {
       const Client = mod.default;
-      const networkId = String(ZEKO_NETWORK_ID || 'testnet').trim().toLowerCase() === 'mainnet' ? 'mainnet' : 'testnet';
-      return new Client({ network: networkId });
+      return new Client({ network: 'zeko' });
     });
   }
   return minaSignerClientPromise;
@@ -1904,7 +1863,7 @@ function setCorsHeaders(req, res) {
   const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '*';
   res.setHeader('Access-Control-Allow-Origin', origin || '*');
   res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Headers', 'content-type,x-maker-key');
+  res.setHeader('Access-Control-Allow-Headers', 'content-type,x-maker-key,x-internal-service-key');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,HEAD');
 }
 
@@ -4046,7 +4005,6 @@ function computeStatusSnapshot(port) {
   const openOrders = Array.from(orders.values()).filter((o) => o.status !== 'FILLED' && o.status !== 'CANCELED' && o.remaining > 1e-9);
   const avgMatchMs = engineMetrics.matchCallCount > 0 ? engineMetrics.matchTotalMs / engineMetrics.matchCallCount : 0;
   const auditStatus = getAuditChainStatus(auditTrail);
-  const walletNetwork = detectWalletNetworkConfig();
   return {
     ok: true,
     nowUnixMs: now(),
@@ -4072,7 +4030,7 @@ function computeStatusSnapshot(port) {
         archiveRelayEndpoint: ZEKO_ARCHIVE_RELAY_GRAPHQL || null,
         hasDedicatedTxEndpoint: Boolean(ZEKO_TX_GRAPHQL_ENV && ZEKO_TX_GRAPHQL_ENV !== ZEKO_GRAPHQL)
       },
-      walletNetwork,
+      walletNetwork: WALLET_NETWORK_CONFIG,
       da: {
         mode: DA_MODE,
         enabled: Boolean(DA_ENDPOINT),
@@ -4176,20 +4134,17 @@ async function bootstrapMarkets() {
     if (!market.quoteTokenId) {
       throw new Error(`missing quoteTokenId for ${market.symbol}; set SUPPORTED_ASSET_PAIRS_JSON or token address for ${market.quoteAsset}`);
     }
-    if (IS_SEPOLIA_ZEKO) {
-      const expectedBaseTokenId = baseAssetKey === 'SETH' ? DEFAULT_NATIVE_TOKEN_ID : DEFAULT_SZEKO_TOKEN_ID;
-      const expectedQuoteTokenId = quoteAssetKey === 'SETH' ? DEFAULT_NATIVE_TOKEN_ID : DEFAULT_SZEKO_TOKEN_ID;
-      if (
-        !['SETH', 'SZEKO'].includes(baseAssetKey) ||
-        !['SETH', 'SZEKO'].includes(quoteAssetKey) ||
-        market.baseTokenId !== expectedBaseTokenId ||
-        market.quoteTokenId !== expectedQuoteTokenId
-      ) {
-        throw new Error(
-          `Sepolia requires an sETH/sZEKO market using the configured native and sZEKO token IDs; ` +
-          `replace SUPPORTED_ASSET_PAIRS_JSON instead of reusing Mina-testnet pairs`
-        );
-      }
+    const expectedBaseTokenId = baseAssetKey === 'SETH' ? DEFAULT_NATIVE_TOKEN_ID : DEFAULT_SZEKO_TOKEN_ID;
+    const expectedQuoteTokenId = quoteAssetKey === 'SETH' ? DEFAULT_NATIVE_TOKEN_ID : DEFAULT_SZEKO_TOKEN_ID;
+    if (
+      !['SETH', 'SZEKO'].includes(baseAssetKey) ||
+      !['SETH', 'SZEKO'].includes(quoteAssetKey) ||
+      market.baseTokenId !== expectedBaseTokenId ||
+      market.quoteTokenId !== expectedQuoteTokenId
+    ) {
+      throw new Error(
+        `Sepolia requires the sETH/sZEKO market using the configured native and sZEKO token IDs`
+      );
     }
     pairs.set(String(market.symbol).trim().toUpperCase(), market);
   }
@@ -4203,6 +4158,9 @@ async function bootstrapMarkets() {
 }
 
 async function main() {
+  if (!ZEKO_GRAPHQL.includes('sepolia.zeko.io')) {
+    throw new Error('Sepolia-only deployment requires ZEKO_GRAPHQL to point to https://sepolia.zeko.io/graphql');
+  }
   await bootstrapMarkets();
   const landingPagePath = path.resolve(projectRoot, 'public', 'index.html');
   const landingPreviewPagePath = path.resolve(projectRoot, 'public', 'landing-preview.html');
@@ -4210,7 +4168,7 @@ async function main() {
   const partnerPagePath = path.resolve(projectRoot, 'public', 'partner-frontend.html');
   const assetsRoot = path.resolve(projectRoot, 'public', 'assets');
   const sdkRoot = path.resolve(projectRoot, 'public', 'sdk');
-  const defaultDataDir = path.resolve(projectRoot, 'data', IS_SEPOLIA_ZEKO ? 'zeko-sepolia' : '.');
+  const defaultDataDir = path.resolve(projectRoot, 'data', 'zeko-sepolia');
   const dataDir = path.resolve(process.env.DARKPOOL_DATA_DIR || defaultDataDir);
   settlementBatchesPath = path.join(dataDir, 'settlement-batches.json');
   engineStatePath = path.join(dataDir, 'engine-state.json');
