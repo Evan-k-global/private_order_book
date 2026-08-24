@@ -1501,7 +1501,7 @@
           <div class="grid3">
             <div>
               <label>Wallet</label>
-              <input id="ordWallet" value="B62qdemo_wallet_alpha" />
+              <input id="ordWallet" placeholder="Connect Auro Wallet" />
             </div>
             <div>
               <label>Market</label>
@@ -1664,7 +1664,7 @@
               <option value="global">Global History</option>
             </select>
             <span class="activity-toolbar-label">Wallet</span>
-            <input id="activityWallet" class="compact-wallet" value="B62qdemo_wallet_alpha" />
+            <input id="activityWallet" class="compact-wallet" placeholder="Connect Auro Wallet" />
             <span class="activity-toolbar-label">Rows</span>
             <input id="activityLimit" class="compact-input" type="number" value="150" />
             <button type="button" class="ghost activity-refresh-btn" id="refreshActivityBtn"><span class="refresh-icon">↻</span><span>Refresh</span></button>
@@ -1803,10 +1803,7 @@
           <div class="hd"><h2>Funding Guide</h2></div>
           <div class="bd stack">
             <div class="footnote mono">
-              1) Connect Wallet.
-              2) Acquire the supported testnet assets for this deployment in your wallet.
-              3) Mint and Redeem privacy notes in Funding UI.
-              4) Place orders in Trading UI.
+              1) Connect Auro. 2) Sync balances. 3) Deposit and mint private notes. 4) Trade with notes.
             </div>
           </div>
         </section>
@@ -1819,7 +1816,7 @@
             <div class="grid3">
               <div><label>Asset</label><select id="noteAsset"></select></div>
               <div><label>Amount</label><input id="noteAmount" type="number" value="1" /></div>
-              <div><label>Wallet</label><input id="noteWallet" value="B62qdemo_wallet_alpha" /></div>
+              <div><label>Wallet</label><input id="noteWallet" placeholder="Connect Auro Wallet" /></div>
             </div>
             <div id="noteAssetMeta" class="market-verify mono"></div>
             <div class="footnote">
@@ -1881,13 +1878,13 @@
           <div class="hd"><h2>On-Chain Funding</h2></div>
           <div class="bd stack">
             <div class="footnote">
-              Fund your wallet on Zeko testnet, then sync balances into ShadowBook.
+              Sync your active Auro account and on-chain balances into ShadowBook.
             </div>
             <div class="grid2 funding-sync-row">
               <button id="syncBtn" class="txn">Sync On-Chain Balance</button>
               <div>
                 <label>Wallet</label>
-                <input id="chainWallet" value="B62qdemo_wallet_alpha" />
+                <input id="chainWallet" placeholder="Connect Auro Wallet" />
               </div>
             </div>
             <label>Latest Minted Note</label>
@@ -1933,6 +1930,8 @@
       let serverTokenContractAddresses = {};
       const walletSyncTimes = new Map();
       const WALLET_SYNC_COOLDOWN_MS = 20000;
+      let activeAuroWallet = '';
+      let autoAuroSyncInFlight = false;
       const sepoliaWalletNetwork = {
         key: 'zekoEthereumSepolia',
         label: 'Zeko Ethereum Sepolia',
@@ -1994,6 +1993,60 @@
           return await provider.request(params === undefined ? { method: `mina_${methodName}` } : { method: `mina_${methodName}`, params });
         }
         throw new Error(`Connected wallet provider does not support ${methodName}`);
+      }
+
+      function walletAddressFromAccounts(accounts) {
+        const first = Array.isArray(accounts) ? accounts[0] : accounts;
+        if (typeof first === 'string') return first.trim();
+        return String(first?.publicKey || first?.address || '').trim();
+      }
+
+      async function readAuroWallet({ request = false } = {}) {
+        const provider = window.mina;
+        if (!provider) return '';
+        let accounts = [];
+        if (request && typeof provider.requestAccounts === 'function') {
+          accounts = await provider.requestAccounts();
+        } else if (request && typeof provider.request === 'function') {
+          const result = await provider.request({ method: 'mina_requestAccounts' });
+          accounts = Array.isArray(result) ? result : result?.result || [];
+        }
+        if (typeof provider.getAccounts === 'function') {
+          const activeAccounts = await provider.getAccounts();
+          if (Array.isArray(activeAccounts) && activeAccounts.length) accounts = activeAccounts;
+        }
+        return walletAddressFromAccounts(accounts);
+      }
+
+      function setWalletFields(wallet) {
+        for (const id of ['ordWallet', 'activityWallet', 'chainWallet', 'noteWallet']) {
+          const el = document.getElementById(id);
+          if (el) el.value = wallet;
+        }
+      }
+
+      async function syncDetectedAuroWallet({ force = false } = {}) {
+        if (autoAuroSyncInFlight) return false;
+        const wallet = await readAuroWallet();
+        if (!wallet) return false;
+        const current = String(document.getElementById('chainWallet')?.value || '').trim();
+        const currentIsEmpty = !current || isDemoWalletPlaceholder(current);
+        const canAdopt = force || walletConnected || currentIsEmpty || current === activeAuroWallet;
+        if (!canAdopt) return false;
+        const changed = wallet !== activeAuroWallet || current !== wallet;
+        activeAuroWallet = wallet;
+        walletConnected = true;
+        if (current !== wallet) setWalletFields(wallet);
+        updateWalletButtonState();
+        if (!changed && !force) return true;
+        autoAuroSyncInFlight = true;
+        try {
+          await syncWalletContext(wallet);
+          walletSyncTimes.set(wallet, Date.now());
+        } finally {
+          autoAuroSyncInFlight = false;
+        }
+        return true;
       }
 
       async function requestAuroNetworkInfo() {
@@ -2910,29 +2963,12 @@
       async function connectWallet() {
         const provider = window.mina;
         if (!provider) throw new Error('No Mina wallet provider found in browser');
-        let accounts = [];
-        if (typeof provider.requestAccounts === 'function') {
-          accounts = await provider.requestAccounts();
-        } else if (typeof provider.request === 'function') {
-          const result = await provider.request({ method: 'mina_requestAccounts' });
-          accounts = Array.isArray(result) ? result : (result?.result || []);
-        } else {
-          throw new Error('Connected wallet provider does not support account requests');
-        }
-        if (typeof provider.getAccounts === 'function') {
-          const activeAccounts = await provider.getAccounts();
-          if (Array.isArray(activeAccounts) && activeAccounts.length) accounts = activeAccounts;
-        }
-        const wallet = Array.isArray(accounts) ? accounts[0] : accounts;
+        const wallet = await readAuroWallet({ request: true });
         if (!wallet || typeof wallet !== 'string') throw new Error('Wallet did not return an address');
 
-        const targets = ['ordWallet', 'activityWallet', 'chainWallet', 'noteWallet'];
-        for (const id of targets) {
-          const el = document.getElementById(id);
-          if (el) el.value = wallet;
-        }
-
+        activeAuroWallet = wallet;
         walletConnected = true;
+        setWalletFields(wallet);
         updateWalletButtonState();
         updateOperatorPanelState();
         const connectionWarnings = [];
@@ -2942,7 +2978,7 @@
           connectionWarnings.push(`network switch unavailable: ${String(error?.message || error)}`);
         }
         try {
-          await sdk.syncOnchainBalance({ wallet });
+          await syncWalletContext(wallet);
           walletSyncTimes.set(wallet, Date.now());
         } catch (error) {
           connectionWarnings.push(`on-chain sync unavailable: ${String(error?.message || error)}`);
@@ -3109,6 +3145,25 @@
         if (action === 'sync') return 'Connect your wallet and sync/fund your account to view balances.';
         if (action === 'notes') return 'Connect your wallet and sync/fund your account to view private collateral.';
         return 'Connect your wallet and sync/fund your account before trading.';
+      }
+
+      async function syncFundingWalletFromInput() {
+        const wallet =
+          String(document.getElementById('chainWallet')?.value || '').trim() ||
+          String(document.getElementById('noteWallet')?.value || '').trim();
+        if (!wallet) {
+          setText('notesPortfolioOut', 'Enter a wallet address or connect Auro Wallet.');
+          return;
+        }
+        if (isDemoWalletPlaceholder(wallet)) {
+          setText('notesPortfolioOut', walletSetupMessage('sync'));
+          return;
+        }
+        activeAuroWallet = '';
+        walletConnected = false;
+        updateWalletButtonState();
+        setText('notesPortfolioOut', 'Syncing on-chain balances and rebuilding wallet + private collateral view...');
+        await syncWalletContext(wallet);
       }
 
       const activityFilterState = {
@@ -4345,6 +4400,25 @@
         refreshPretradeChecklist().catch(() => {});
         updateOperatorPanelState();
       };
+      function mirrorFundingWalletDraft(sourceId) {
+        const source = document.getElementById(sourceId);
+        const value = String(source?.value || '').trim();
+        const otherId = sourceId === 'chainWallet' ? 'noteWallet' : 'chainWallet';
+        const other = document.getElementById(otherId);
+        if (other) other.value = value;
+      }
+      for (const id of ['chainWallet', 'noteWallet']) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        el.oninput = () => mirrorFundingWalletDraft(id);
+        el.onchange = () => syncFundingWalletFromInput().catch((error) => setText('notesPortfolioOut', String(error)));
+        el.onkeydown = (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            syncFundingWalletFromInput().catch((error) => setText('notesPortfolioOut', String(error)));
+          }
+        };
+      }
       document.getElementById('operatorAdminKey').oninput = () => {
         updateOperatorPanelState();
       };
@@ -4406,13 +4480,7 @@
 
       document.getElementById('syncBtn').onclick = async () => {
         try {
-          const wallet = document.getElementById('chainWallet').value.trim();
-          if (isDemoWalletPlaceholder(wallet)) {
-            setText('notesPortfolioOut', walletSetupMessage('sync'));
-            return;
-          }
-          setText('notesPortfolioOut', 'Syncing on-chain balances and rebuilding wallet + private collateral view...');
-          await syncWalletContext(wallet);
+          await syncFundingWalletFromInput();
         } catch (e) { setText('notesPortfolioOut', String(e)); }
       };
 
@@ -4733,6 +4801,7 @@
           );
           const marketsResp = await sdk.getMarkets();
           populateMarketSelectors(marketsResp.markets || []);
+          await syncDetectedAuroWallet({ force: true }).catch(() => {});
           updateWalletButtonState();
           updateOrderTypeUi();
           updateFundingModeHint();
@@ -4743,6 +4812,9 @@
           await refreshFeeStats();
           await refreshOperatorPanel();
           await refreshPretradeChecklist();
+          setInterval(() => {
+            syncDetectedAuroWallet().catch(() => {});
+          }, 5000);
           setText('notesPortfolioOut', 'Refreshing wallet + private collateral...');
           await refreshNotesPortfolio();
           setInterval(async () => {
