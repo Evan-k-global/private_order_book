@@ -18,41 +18,11 @@ pnpm install --frozen-lockfile && pnpm build:zkapp
 pnpm render:start
 ```
 
-### Required env
+### Environment profile
 
-At minimum, configure:
+Use [`.env.example`](../.env.example) as the Render environment checklist. It is intentionally limited to the Sepolia chain, deployed settlement zkApp, wallet/deposit handling, early access, matching, fees, and the on-chain settlement worker.
 
-```env
-DARKPOOL_HOST=0.0.0.0
-AUTO_RUN_BACKGROUND_WORKERS=true
-AUTO_RUN_PROOF_WORKER=false
-AUTO_RUN_SETTLEMENT_WORKER=true
-ZKAPP_COMMIT_USE_PROOF=false
-REQUIRE_CACHED_PRIVATE_STATE_PROOF=false
-ALLOW_INLINE_PRIVATE_STATE_PROVING=false
-```
-
-Plus the Sepolia chain and app configuration:
-
-- `ZEKO_GRAPHQL=https://sepolia.zeko.io/graphql`
-- `ZEKO_NETWORK_ID=zeko`
-- `SUPPORTED_ASSET_PAIRS_JSON` for `sETH/sZEKO`
-- `ASSET_DECIMALS_JSON` for `sETH` and `sZEKO`
-- `TOKEN_CONTRACT_ADDRESSES_JSON` with native `sETH` and the whitelisted `sZEKO` contract
-- `DEPLOYER_PRIVATE_KEY`
-- `ZKAPP_PRIVATE_KEY`
-- `ZKAPP_PUBLIC_KEY`
-- `PAYOUT_OPERATOR_PRIVATE_KEY`
-- `PAYOUT_FEE_PAYER_PRIVATE_KEY` if separate
-- `ORDER_RECEIPT_SECRET`
-- `MAKER_API_KEY`
-- `OPERATOR_PANEL_ADMIN_KEY`
-- `VAULT_DEPOSIT_ADDRESS`
-- `ORDER_STATE_ENCRYPTION_KEY`
-- `INTERNAL_SERVICE_SECRET`
-- `ZEKO_SETTLEMENT_GRAPHQL`
-- `EARLY_ACCESS_GATE_ENABLED` and `EARLY_ACCESS_CODES` if you want the landing-page invite gate enabled
-- any DA relay envs you actually use
+The profile intentionally does not include archive endpoints, proof-agent settings, faucet credentials, bot settings, or DA relay bridge credentials. Those belong to separately deployed services, not the Render web process.
 
 ### Recommended setup
 
@@ -65,6 +35,14 @@ Plus the Sepolia chain and app configuration:
 - HTTP API + UI
 - matcher
 - embedded settlement loop
+
+The Render start command does not start `src/da-relay-server.js`. Keep `DA_MODE=disabled` and leave `DA_ENDPOINT` unset unless a separate relay service has been deployed and tested.
+
+### DA relay boundary
+
+The relay accepts encrypted ShadowBook payloads and can persist a signed receipt locally. Its default `DA_RELAY_FORWARD_MODE=none` is stored-only behavior; it is not proof that data has been anchored to Zeko or Ethereum Sepolia. Actual forwarding requires a separately deployed bridge or command adapter and its own `ZEKO_DA_BRIDGE_URL` or `DA_RELAY_COMMAND`.
+
+When a relay is separately deployed, its payload should identify Sepolia as `network: "zeko:testnet"`. That is the live GraphQL network identifier returned by `https://sepolia.zeko.io/graphql`; the o1js transaction network id remains `zeko`.
 
 This is the simplest deployment shape for the demo.
 
