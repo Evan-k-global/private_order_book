@@ -1096,16 +1096,6 @@
         padding: 8px 12px;
         align-self: end;
       }
-      .acquire-links {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 8px;
-      }
-      .acquire-links .btn-link {
-        min-width: 0;
-        width: 100%;
-        justify-content: center;
-      }
       .meta-label {
         display: block;
         margin-top: 2px;
@@ -1814,7 +1804,13 @@
               Convert an on-chain vault deposit into private collateral. Trading uses your available notes automatically unless you override with specific note hashes.
             </div>
             <div class="grid3">
-              <div><label>Asset</label><select id="noteAsset"></select></div>
+              <div>
+                <label>Asset</label>
+                <select id="noteAsset">
+                  <option value="sETH" data-token-id="wSHV2S4qX9jFsLjQo8r1BsMLH2ZRKsZx6EJd1sbozGPieEC4Jf">sETH (0.00)</option>
+                  <option value="sZEKO" data-token-id="xpAptwG79jEStACsCv9C6yXUBmKbvurUo8GsTPYapn9QWB5zE5">sZEKO (0.00)</option>
+                </select>
+              </div>
               <div><label>Amount</label><input id="noteAmount" type="number" value="1" /></div>
               <div><label>Wallet</label><input id="noteWallet" placeholder="Connect Auro Wallet" /></div>
             </div>
@@ -1864,16 +1860,6 @@
       </div>
 
       <div class="funding-right-col">
-        <section class="card vault-zone">
-          <div class="hd"><h2>Acquire Testnet Funds</h2></div>
-          <div class="bd stack">
-            <div class="acquire-links">
-              <a class="ghost btn-link" href="https://faucet.zeko.io/" target="_blank" rel="noreferrer">Official Faucet</a>
-              <a class="ghost btn-link" href="https://bridge.zeko.io/" target="_blank" rel="noreferrer">Official Bridge</a>
-              <a class="ghost btn-link" href="https://solis.gizmolab.io/" target="_blank" rel="noreferrer">SolisDEX</a>
-            </div>
-          </div>
-        </section>
         <section class="card vault-zone funding-sync">
           <div class="hd"><h2>On-Chain Funding</h2></div>
           <div class="bd stack">
@@ -2233,7 +2219,18 @@
           if (m?.baseAsset && m?.baseTokenId) map.set(String(m.baseAsset).toUpperCase(), { asset: m.baseAsset, tokenId: m.baseTokenId });
           if (m?.quoteAsset && m?.quoteTokenId) map.set(String(m.quoteAsset).toUpperCase(), { asset: m.quoteAsset, tokenId: m.quoteTokenId });
         }
-        return Array.from(map.values());
+        const catalog = Array.from(map.values());
+        if (catalog.length) return catalog;
+        return [
+          {
+            asset: 'sETH',
+            tokenId: 'wSHV2S4qX9jFsLjQo8r1BsMLH2ZRKsZx6EJd1sbozGPieEC4Jf'
+          },
+          {
+            asset: 'sZEKO',
+            tokenId: 'xpAptwG79jEStACsCv9C6yXUBmKbvurUo8GsTPYapn9QWB5zE5'
+          }
+        ];
       }
 
       function isNativeAsset(asset) {
