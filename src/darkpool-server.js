@@ -12,11 +12,26 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '..');
 const require = createRequire(import.meta.url);
 
-const ZEKO_GRAPHQL = process.env.ZEKO_GRAPHQL || 'https://sepolia.zeko.io/graphql';
+const SEPOLIA_ZEKO_GRAPHQL = 'https://sepolia.zeko.io/graphql';
+function isSepoliaGraphqlEndpoint(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    return url.protocol === 'https:' && url.hostname === 'sepolia.zeko.io' && url.pathname === '/graphql';
+  } catch {
+    return false;
+  }
+}
+
+const CONFIGURED_ZEKO_GRAPHQL = String(process.env.ZEKO_GRAPHQL || '').trim();
+const ZEKO_GRAPHQL = isSepoliaGraphqlEndpoint(CONFIGURED_ZEKO_GRAPHQL)
+  ? CONFIGURED_ZEKO_GRAPHQL
+  : SEPOLIA_ZEKO_GRAPHQL;
 const ZEKO_NETWORK_ID = 'zeko';
-const ZEKO_TX_GRAPHQL_ENV = process.env.ZEKO_TX_GRAPHQL || '';
-const ZEKO_ARCHIVE_GRAPHQL = process.env.ZEKO_ARCHIVE_GRAPHQL || '';
-const ZEKO_ARCHIVE_RELAY_GRAPHQL = process.env.ZEKO_ARCHIVE_RELAY_GRAPHQL || '';
+const ZEKO_TX_GRAPHQL_ENV = isSepoliaGraphqlEndpoint(process.env.ZEKO_TX_GRAPHQL) ? process.env.ZEKO_TX_GRAPHQL : '';
+const ZEKO_ARCHIVE_GRAPHQL = isSepoliaGraphqlEndpoint(process.env.ZEKO_ARCHIVE_GRAPHQL) ? process.env.ZEKO_ARCHIVE_GRAPHQL : '';
+const ZEKO_ARCHIVE_RELAY_GRAPHQL = isSepoliaGraphqlEndpoint(process.env.ZEKO_ARCHIVE_RELAY_GRAPHQL)
+  ? process.env.ZEKO_ARCHIVE_RELAY_GRAPHQL
+  : '';
 const ZEKO_TX_GRAPHQL =
   ZEKO_TX_GRAPHQL_ENV ||
   ZEKO_ARCHIVE_RELAY_GRAPHQL ||
@@ -201,7 +216,9 @@ const REQUIRE_ONCHAIN_DEPOSIT_TX =
 const ALLOW_WALLET_TX_HASH_FALLBACK =
   String(process.env.ALLOW_WALLET_TX_HASH_FALLBACK || 'true').toLowerCase() === 'true';
 const TX_FEE = String(process.env.TX_FEE || '100000000').trim();
-const ZEKO_SETTLEMENT_GRAPHQL = process.env.ZEKO_SETTLEMENT_GRAPHQL || ZEKO_GRAPHQL || '';
+const ZEKO_SETTLEMENT_GRAPHQL = isSepoliaGraphqlEndpoint(process.env.ZEKO_SETTLEMENT_GRAPHQL)
+  ? process.env.ZEKO_SETTLEMENT_GRAPHQL
+  : ZEKO_GRAPHQL;
 const ZKAPP_PUBLIC_KEY = process.env.ZKAPP_PUBLIC_KEY || '';
 const OPERATOR_PUBLIC_KEY = process.env.OPERATOR_PUBLIC_KEY || '';
 const OPERATOR_PANEL_ALLOWED_WALLET = String(process.env.OPERATOR_PANEL_ALLOWED_WALLET || '').trim();
@@ -4158,8 +4175,8 @@ async function bootstrapMarkets() {
 }
 
 async function main() {
-  if (!ZEKO_GRAPHQL.includes('sepolia.zeko.io')) {
-    throw new Error('Sepolia-only deployment requires ZEKO_GRAPHQL to point to https://sepolia.zeko.io/graphql');
+  if (CONFIGURED_ZEKO_GRAPHQL && CONFIGURED_ZEKO_GRAPHQL !== SEPOLIA_ZEKO_GRAPHQL) {
+    console.warn('[darkpool-server] Ignoring non-Sepolia ZEKO_GRAPHQL and using https://sepolia.zeko.io/graphql');
   }
   await bootstrapMarkets();
   const landingPagePath = path.resolve(projectRoot, 'public', 'index.html');
