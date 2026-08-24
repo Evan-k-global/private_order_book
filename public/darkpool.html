@@ -1488,7 +1488,7 @@
       <div class="top-tabs">
         <button id="tabTrading" class="tab-btn active">Trading</button>
         <button id="tabFunding" class="tab-btn">Funding</button>
-        <button type="button" class="ghost wallet-btn" id="globalConnectWalletBtn">Connect Wallet</button>
+        <button type="button" class="ghost wallet-btn" id="globalConnectWalletBtn">Connect Auro Wallet</button>
       </div>
       <div class="header-actions">
         <div class="network-badge">Zeko Ethereum Sepolia</div>
@@ -1937,8 +1937,7 @@
         key: 'zekoEthereumSepolia',
         label: 'Zeko Ethereum Sepolia',
         auroNetworkName: 'Zeko Ethereum Sepolia',
-        graphqlUrl: 'https://sepolia.zeko.io/graphql',
-        ethereumChainId: '0xaa36a7'
+        graphqlUrl: 'https://sepolia.zeko.io/graphql'
       };
 
       function formatDisplayAsset(asset) {
@@ -2005,44 +2004,7 @@
         }
       }
 
-      async function ensureEthereumCompanionNetwork(config, requestAccounts = false) {
-        if (!config?.ethereumChainId) return { attempted: false, switched: false };
-        const provider = window.ethereum;
-        if (!provider?.request) return { attempted: false, switched: false };
-        try {
-          const accounts = await provider.request({ method: requestAccounts ? 'eth_requestAccounts' : 'eth_accounts' });
-          await provider.request({
-            method: 'wallet_switchEthereumChain',
-            params: [{ chainId: config.ethereumChainId }]
-          });
-          return { attempted: true, switched: true, account: accounts?.[0] || null };
-        } catch (error) {
-          const code = Number(error?.code || 0);
-          if (code === 4902) {
-            await provider.request({
-              method: 'wallet_addEthereumChain',
-              params: [
-                {
-                  chainId: config.ethereumChainId,
-                  chainName: 'Ethereum Sepolia',
-                  nativeCurrency: {
-                    name: 'Sepolia ETH',
-                    symbol: 'ETH',
-                    decimals: 18
-                  },
-                  rpcUrls: ['https://rpc.sepolia.org'],
-                  blockExplorerUrls: ['https://sepolia.etherscan.io']
-                }
-              ]
-            });
-            return { attempted: true, switched: true, account: null };
-          }
-          return { attempted: true, switched: false, error: String(error?.message || error) };
-        }
-      }
-
-      async function syncSepoliaWalletNetwork(options = {}) {
-        const { requestEthereumAccounts = false } = options;
+      async function syncSepoliaWalletNetwork() {
         const provider = window.mina;
         if (!provider) {
           throw new Error('No Mina wallet provider found in browser');
@@ -2052,12 +2014,10 @@
           name: sepoliaWalletNetwork.auroNetworkName
         });
         const currentNetwork = await requestAuroNetworkInfo();
-        const ethereumResult = await ensureEthereumCompanionNetwork(sepoliaWalletNetwork, requestEthereumAccounts);
         return {
           requestedWalletNetwork: sepoliaWalletNetwork,
           auroResult,
-          auroNetwork: currentNetwork,
-          ethereumCompanion: ethereumResult
+          auroNetwork: currentNetwork
         };
       }
 
@@ -2915,7 +2875,7 @@
         if (!btn) return;
         if (!walletConnected) {
           btn.hidden = false;
-          btn.textContent = 'Connect Wallet';
+          btn.textContent = 'Connect Auro Wallet';
           btn.classList.remove('connected');
           btn.disabled = false;
           btn.title = '';
@@ -2977,7 +2937,7 @@
         updateOperatorPanelState();
         const connectionWarnings = [];
         try {
-          await syncSepoliaWalletNetwork({ requestEthereumAccounts: true });
+          await syncSepoliaWalletNetwork();
         } catch (error) {
           connectionWarnings.push(`network switch unavailable: ${String(error?.message || error)}`);
         }
