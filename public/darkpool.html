@@ -2287,10 +2287,13 @@
         const candidates = [
           response.hash,
           response.txHash,
+          response.transactionHash,
           response?.data?.hash,
           response?.data?.txHash,
+          response?.data?.transactionHash,
           response?.result?.hash,
           response?.result?.txHash,
+          response?.result?.transactionHash,
           response?.payment?.hash
         ];
         for (const c of candidates) {
@@ -2300,14 +2303,13 @@
         return '';
       }
 
-      function toAuroTransactionString(transaction) {
+      function toAuroTransactionData(transaction) {
         const original = typeof transaction === 'string' ? JSON.parse(transaction) : transaction;
         const tx = JSON.parse(JSON.stringify(original));
         if (tx?.feePayer?.body?.fee === '0') {
-          // Lumina works around an Auro edge case by forcing a non-zero fee here.
           tx.feePayer.body.fee = '1';
         }
-        return JSON.stringify(tx);
+        return tx;
       }
 
       function extractSignedZkappCommand(response, wallet) {
@@ -2335,6 +2337,33 @@
       function depositDebugLog(event, data = {}) {
         if (window.SHADOWBOOK_DEBUG_DEPOSITS !== true) return;
         console.info('[shadowbook:deposit]', event, data);
+      }
+
+      const pendingDepositStorageKey = 'shadowbook:pending-deposit:v1';
+
+      function rememberPendingDeposit(payload) {
+        try {
+          localStorage.setItem(pendingDepositStorageKey, JSON.stringify({
+            ...payload,
+            createdAt: Date.now()
+          }));
+        } catch {}
+      }
+
+      function readPendingDeposit() {
+        try {
+          const value = JSON.parse(localStorage.getItem(pendingDepositStorageKey) || 'null');
+          return value && typeof value === 'object' ? value : null;
+        } catch {
+          return null;
+        }
+      }
+
+      function clearPendingDeposit(txHash = '') {
+        const pending = readPendingDeposit();
+        if (!pending || !txHash || pending.txHash === txHash) {
+          try { localStorage.removeItem(pendingDepositStorageKey); } catch {}
+        }
       }
 
       async function syncWalletContext(wallet, outputId) {
@@ -2374,8 +2403,8 @@
           amount,
           memo
         });
-        const txPayload = toAuroTransactionString(built.transaction);
-        const fee = Number(built.fee || '0.0002');
+        const txPayload = toAuroTransactionData(built.transaction);
+        const fee = built.fee || '0.0002';
         depositDebugLog('built', {
           asset,
           tokenId,
@@ -2388,22 +2417,18 @@
         if (typeof provider.sendTransaction === 'function') {
           try {
             const response = await provider.sendTransaction({
-              onlySign: true,
               transaction: txPayload,
               feePayer: { fee }
             });
-            const zkappCommand = extractSignedZkappCommand(response, wallet);
-            const submitted = await sdk.submitSignedDepositTransaction({ zkappCommand });
-            const txHash = extractWalletTxHash(submitted) || submitted?.hash || '';
-            depositDebugLog('wallet-signed-and-submitted', { asset, tokenId, txHash, response });
+            const txHash = extractWalletTxHash(response) || response?.hash || '';
+            depositDebugLog('wallet-submitted', { asset, tokenId, txHash, response });
             return {
-              method: 'sendTransaction:onlySign+submit',
+              method: 'sendTransaction',
               response,
               txHash,
               asset,
               tokenId: tokenId || null,
-              built,
-              submitted
+              built
             };
           } catch (e) {
             attempts.push(`sendTransaction: ${String(e?.message || e)}`);
@@ -2416,7 +2441,6 @@
             {
               method: 'mina_sendTransaction',
               params: {
-                onlySign: true,
                 transaction: txPayload,
                 feePayer: { fee }
               }
@@ -2425,18 +2449,15 @@
           for (const req of requestAttempts) {
             try {
               const response = await provider.request({ method: req.method, params: req.params });
-              const zkappCommand = extractSignedZkappCommand(response, wallet);
-              const submitted = await sdk.submitSignedDepositTransaction({ zkappCommand });
-              const txHash = extractWalletTxHash(submitted) || submitted?.hash || '';
-              depositDebugLog('wallet-signed-and-submitted', { asset, tokenId, txHash, response, method: req.method });
+              const txHash = extractWalletTxHash(response) || response?.hash || '';
+              depositDebugLog('wallet-submitted', { asset, tokenId, txHash, response, method: req.method });
               return {
-                method: `${req.method}:onlySign+submit`,
+                method: req.method,
                 response,
                 txHash,
                 asset,
                 tokenId: tokenId || null,
-                built,
-                submitted
+                built
               };
             } catch (e) {
               attempts.push(`${req.method}: ${String(e?.message || e)}`);
@@ -2465,8 +2486,8 @@
           amount: Number(document.getElementById('noteAmount').value || 0),
           txHash: options.txHash || document.getElementById('noteDepositTxHash').value.trim()
         };
-        const attempts = Number.isFinite(Number(options.attempts)) ? Number(options.attempts) : 20;
-        const delayMs = Number.isFinite(Number(options.delayMs)) ? Number(options.delayMs) : 800;
+        const attempts = Number.isFinite(Number(options.attempts)) ? Number(options.attempts) : 60;
+        const delayMs = Number.isFinite(Number(options.delayMs)) ? Number(options.delayMs) : 1500;
         const onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
         let lastError = null;
         for (let i = 0; i < attempts; i += 1) {
@@ -2482,6 +2503,7 @@
               });
             }
             const result = await sdk.depositAuto(payload);
+            clearPendingDeposit(payload.txHash);
             if (result.note?.note) {
               document.getElementById('noteInput').value = result.note.note;
             }
@@ -2496,6 +2518,9 @@
             return result;
           } catch (error) {
             lastError = error;
+            const message = error instanceof Error ? error.message : String(error);
+            const retryable = /unable to verify|transaction lookup|not found|not included|stale|graphql/i.test(message);
+            if (!retryable) throw error;
             if (i < attempts - 1) {
               if (onProgress) {
                 onProgress({
@@ -2509,14 +2534,87 @@
                 });
               }
               const waitMs =
-                i < 5 ? delayMs :
-                i < 12 ? Math.max(delayMs, 1200) :
-                Math.max(delayMs, 1800);
+                i < 10 ? delayMs :
+                i < 30 ? Math.max(delayMs, 2500) :
+                Math.max(delayMs, 4000);
               await sleep(waitMs);
             }
           }
         }
         throw lastError || new Error('auto note mint failed');
+      }
+
+      async function resumePendingDeposit() {
+        const pending = readPendingDeposit();
+        if (!pending?.txHash || !pending.wallet || !pending.asset) return;
+        const noteWallet = document.getElementById('noteWallet');
+        const noteAsset = document.getElementById('noteAsset');
+        const noteAmount = document.getElementById('noteAmount');
+        const noteTxHash = document.getElementById('noteDepositTxHash');
+        if (!noteWallet || !noteAsset || !noteAmount || !noteTxHash) return;
+        noteWallet.value = pending.wallet;
+        if (Array.from(noteAsset.options).some((option) => option.value === pending.asset)) {
+          noteAsset.value = pending.asset;
+        }
+        if (Number.isFinite(Number(pending.amount))) noteAmount.value = String(pending.amount);
+        noteTxHash.value = pending.txHash;
+        try {
+          const portfolio = await sdk.getNotesPortfolio(pending.wallet);
+          const existing = Number(portfolio?.outstandingByAsset?.[String(pending.asset).toUpperCase()] || 0);
+          if (existing + 1e-9 >= Number(pending.amount || 0)) {
+            clearPendingDeposit(pending.txHash);
+            return;
+          }
+        } catch {}
+        setText('vaultOut', {
+          ok: true,
+          pending: true,
+          message: 'Resuming note issuance for a previously submitted deposit. No second transfer will be sent.',
+          asset: pending.asset,
+          txHash: pending.txHash
+        });
+        try {
+          const minted = await autoMintNoteFromLatestDeposit({
+            txHash: pending.txHash,
+            attempts: 60,
+            onProgress(progress) {
+              setDepositBusyState(true, progress?.phase === 'confirming' ? 'confirming' : 'minting');
+              setText('vaultOut', {
+                ok: true,
+                pending: true,
+                message: `Resuming on-chain confirmation before note mint (${progress.attempt}/${progress.attempts}).`,
+                txHash: progress.txHash || pending.txHash,
+                asset: pending.asset,
+                lastError: progress.error || null
+              });
+            }
+          });
+          rememberLocalActivity(pending.wallet, [
+            makeLocalActivityEvent('note_issued', {
+              asset: pending.asset,
+              amount: minted?.note?.amount || pending.amount,
+              noteHash: minted?.note?.note || null,
+              txHash: pending.txHash
+            })
+          ]);
+          setText('vaultOut', {
+            ok: true,
+            message: 'Pending deposit confirmed and privacy note minted.',
+            depositTxHash: pending.txHash,
+            note: minted.note,
+            verifiedDepositTx: minted.verifiedDepositTx || null
+          });
+        } catch (error) {
+          setText('vaultOut', {
+            ok: false,
+            pending: true,
+            message: 'Deposit remains pending note issuance. No second transfer was sent.',
+            txHash: pending.txHash,
+            error: error instanceof Error ? error.message : String(error)
+          });
+        } finally {
+          setDepositBusyState(false);
+        }
       }
 
       async function refreshNoteAssetOptions() {
@@ -4655,6 +4753,15 @@
           const result = await sendDepositTxWithWallet();
           setDepositBusyState(true, 'confirming');
           if (result.txHash) document.getElementById('noteDepositTxHash').value = result.txHash;
+          if (result.txHash) {
+            rememberPendingDeposit({
+              wallet: document.getElementById('noteWallet').value.trim(),
+              asset,
+              tokenId: result.tokenId || '',
+              amount: Number(document.getElementById('noteAmount').value || 0),
+              txHash: result.txHash
+            });
+          }
           setText('vaultOut', {
             ok: true,
             message: result.txHash
@@ -4697,6 +4804,14 @@
               note: minted.note,
               verifiedDepositTx: minted.verifiedDepositTx || null,
               participantBalances: minted.participantBalances || null
+            });
+          } else {
+            setText('vaultOut', {
+              ok: true,
+              pending: true,
+              message:
+                'Wallet accepted the transfer, but did not return a transaction hash. Do not send it again; use the manual tx-hash recovery controls after the transfer appears on-chain.',
+              asset
             });
           }
         } catch (e) {
@@ -4930,6 +5045,7 @@
           const marketsResp = await sdk.getMarkets();
           populateMarketSelectors(marketsResp.markets || []);
           await syncDetectedAuroWallet({ force: true }).catch(() => {});
+          void resumePendingDeposit();
           updateWalletButtonState();
           updateOrderTypeUi();
           updateFundingModeHint();

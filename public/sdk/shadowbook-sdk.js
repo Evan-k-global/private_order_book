@@ -26,7 +26,17 @@
       body: body ? JSON.stringify(body) : undefined
     });
 
-    var json = await response.json();
+    var responseText = await response.text();
+    var json;
+    try {
+      json = JSON.parse(responseText);
+    } catch (error) {
+      var detail = String(responseText || '').replace(/\s+/g, ' ').trim().slice(0, 240);
+      throw new Error(
+        'request failed with non-JSON response' +
+        (detail ? ': ' + detail : '')
+      );
+    }
     if (!response.ok) {
       throw new Error(json.error || 'request failed');
     }
