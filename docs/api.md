@@ -63,6 +63,10 @@ it does not resend the transfer or require Ethereum finality. This is a sequence
 mechanism, not a substitute for cryptographic transaction lookup when an indexed transaction hash
 is available.
 
+On Sepolia, the browser asks Auro to sign the deposit command with `onlySign: true`; the server
+then submits the signed command to the Sepolia `sendZkapp` mutation. This avoids making Auro wait
+for the full sequencer broadcast path and keeps the submission retry/recovery boundary in the app.
+
 ## Operator APIs
 
 - `POST /api/darkpool/operator/zkapp-state`

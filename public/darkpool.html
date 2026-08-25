@@ -2407,6 +2407,8 @@
         const fee = built.fee || '0.0002';
         const depositIntent = await sdk.createDepositIntent({ wallet, asset, tokenId, amount });
         const depositIntentId = depositIntent.intentId;
+        const walletFee = Number(fee);
+        if (!Number.isFinite(walletFee) || walletFee <= 0) throw new Error(`invalid wallet fee ${fee}`);
         depositDebugLog('built', {
           asset,
           tokenId,
@@ -2420,18 +2422,35 @@
         if (typeof provider.sendTransaction === 'function') {
           try {
             const response = await provider.sendTransaction({
+              onlySign: true,
               transaction: txPayload,
-              feePayer: { fee }
+              feePayer: { fee: walletFee }
             });
-            const txHash = extractWalletTxHash(response) || response?.hash || '';
-            depositDebugLog('wallet-submitted', { asset, tokenId, txHash, response });
+            const directHash = extractWalletTxHash(response) || response?.hash || '';
+            if (directHash) {
+              depositDebugLog('wallet-submitted', { asset, tokenId, txHash: directHash, response });
+              return {
+                method: 'sendTransaction',
+                response,
+                txHash: directHash,
+                asset,
+                tokenId: tokenId || null,
+                intentId: depositIntentId,
+                built
+              };
+            }
+            const zkappCommand = extractSignedZkappCommand(response, wallet);
+            const submitted = await sdk.submitSignedDepositTransaction({ zkappCommand });
+            const txHash = extractWalletTxHash(submitted) || submitted?.hash || '';
+            depositDebugLog('wallet-signed-server-submitted', { asset, tokenId, txHash, method: 'sendTransaction' });
             return {
-              method: 'sendTransaction',
+              method: 'sendTransaction:onlySign+serverSubmit',
               response,
               txHash,
               asset,
               tokenId: tokenId || null,
               intentId: depositIntentId,
+              submitted,
               built
             };
           } catch (e) {
@@ -2448,23 +2467,40 @@
             {
               method: 'mina_sendTransaction',
               params: {
+                onlySign: true,
                 transaction: txPayload,
-                feePayer: { fee }
+                feePayer: { fee: walletFee }
               }
             }
           ];
           for (const req of requestAttempts) {
             try {
               const response = await provider.request({ method: req.method, params: req.params });
-              const txHash = extractWalletTxHash(response) || response?.hash || '';
-              depositDebugLog('wallet-submitted', { asset, tokenId, txHash, response, method: req.method });
+              const directHash = extractWalletTxHash(response) || response?.hash || '';
+              if (directHash) {
+                depositDebugLog('wallet-submitted', { asset, tokenId, txHash: directHash, response, method: req.method });
+                return {
+                  method: req.method,
+                  response,
+                  txHash: directHash,
+                  asset,
+                  tokenId: tokenId || null,
+                  intentId: depositIntentId,
+                  built
+                };
+              }
+              const zkappCommand = extractSignedZkappCommand(response, wallet);
+              const submitted = await sdk.submitSignedDepositTransaction({ zkappCommand });
+              const txHash = extractWalletTxHash(submitted) || submitted?.hash || '';
+              depositDebugLog('wallet-signed-server-submitted', { asset, tokenId, txHash, method: req.method });
               return {
-                method: req.method,
+                method: `${req.method}:onlySign+serverSubmit`,
                 response,
                 txHash,
                 asset,
                 tokenId: tokenId || null,
                 intentId: depositIntentId,
+                submitted,
                 built
               };
             } catch (e) {

@@ -990,26 +990,35 @@ async function submitSignedZkappCommand(zkappCommandInput) {
   if (typeof zkappCommandInput.memo !== 'string' || !zkappCommandInput.memo.trim()) {
     throw new Error('signed zkApp command memo is required');
   }
-  const data = await graphqlRequest(
-    `mutation sendZkapp($zkappCommandInput: ZkappCommandInput!) {
-      sendZkapp(input: { zkappCommand: $zkappCommandInput }) {
-        zkapp {
-          hash
-          id
-          failureReason { failures }
-        }
+  const query = `mutation sendZkapp($zkappCommandInput: ZkappCommandInput!) {
+    sendZkapp(input: { zkappCommand: $zkappCommandInput }) {
+      zkapp {
+        hash
+        id
+        failureReason { failures }
       }
-    }`,
-    { zkappCommandInput }
-  );
-  const zkapp = data?.sendZkapp?.zkapp;
-  const failures = zkapp?.failureReason?.failures;
-  if (Array.isArray(failures) && failures.length) {
-    throw new Error(`sendZkapp failed: ${JSON.stringify(failures)}`);
+    }
+  }`;
+  let lastError = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const data = await graphqlRequest(query, { zkappCommandInput });
+      const zkapp = data?.sendZkapp?.zkapp;
+      const failures = zkapp?.failureReason?.failures;
+      if (Array.isArray(failures) && failures.length) {
+        throw new Error(`sendZkapp failed: ${JSON.stringify(failures)}`);
+      }
+      const hash = typeof zkapp?.hash === 'string' ? zkapp.hash : '';
+      if (!hash) throw new Error('sendZkapp returned no hash');
+      return { hash, id: zkapp?.id || null };
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/graphql http (502|503|504|520)/i.test(message) || attempt === 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
   }
-  const hash = typeof zkapp?.hash === 'string' ? zkapp.hash : '';
-  if (!hash) throw new Error('sendZkapp returned no hash');
-  return { hash, id: zkapp?.id || null };
+  throw lastError || new Error('sendZkapp submission failed');
 }
 
 function validateSignedZkappCommandCoverage(zkappCommandInput) {
