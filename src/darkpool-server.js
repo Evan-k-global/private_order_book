@@ -901,7 +901,8 @@ async function buildVaultDepositTransaction({ wallet, tokenId, amount, memo, fee
     const tx = await Mina.transaction(
       {
         sender,
-        fee: UInt64.from(requireString(feeRaw || TX_FEE, 'feeRaw'))
+        fee: UInt64.from(requireString(feeRaw || TX_FEE, 'feeRaw')),
+        memo
       },
       async () => {
         const payer = AccountUpdate.createSigned(sender);
@@ -930,7 +931,8 @@ async function buildVaultDepositTransaction({ wallet, tokenId, amount, memo, fee
   const tx = await Mina.transaction(
     {
       sender,
-      fee: UInt64.from(requireString(feeRaw || TX_FEE, 'feeRaw'))
+      fee: UInt64.from(requireString(feeRaw || TX_FEE, 'feeRaw')),
+      memo
     },
     async () => {
       if (recipientNeedsTokenAccount) {
@@ -965,7 +967,14 @@ async function graphqlRequest(query, variables = {}, endpoint = ZEKO_GRAPHQL) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ query, variables })
   });
-  const json = await response.json();
+  const responseText = await response.text();
+  let json;
+  try {
+    json = JSON.parse(responseText);
+  } catch {
+    const detail = responseText.replace(/\s+/g, ' ').trim().slice(0, 240);
+    throw new Error(`graphql http ${response.status} returned non-JSON${detail ? `: ${detail}` : ''}`);
+  }
   if (!response.ok) throw new Error(`graphql http ${response.status}`);
   if (json.errors && json.errors.length) {
     throw new Error(json.errors.map((e) => e.message || String(e)).join('; '));
@@ -976,6 +985,9 @@ async function graphqlRequest(query, variables = {}, endpoint = ZEKO_GRAPHQL) {
 async function submitSignedZkappCommand(zkappCommandInput) {
   if (!zkappCommandInput || typeof zkappCommandInput !== 'object') {
     throw new Error('zkappCommandInput is required');
+  }
+  if (typeof zkappCommandInput.memo !== 'string' || !zkappCommandInput.memo.trim()) {
+    throw new Error('signed zkApp command memo is required');
   }
   const data = await graphqlRequest(
     `mutation sendZkapp($zkappCommandInput: ZkappCommandInput!) {

@@ -2300,14 +2300,36 @@
         return '';
       }
 
-      function toAuroTransactionData(transaction) {
+      function toAuroTransactionString(transaction) {
         const original = typeof transaction === 'string' ? JSON.parse(transaction) : transaction;
         const tx = JSON.parse(JSON.stringify(original));
         if (tx?.feePayer?.body?.fee === '0') {
           // Lumina works around an Auro edge case by forcing a non-zero fee here.
           tx.feePayer.body.fee = '1';
         }
-        return tx;
+        return JSON.stringify(tx);
+      }
+
+      function extractSignedZkappCommand(response, wallet) {
+        const signedData = response?.signedData || response;
+        if (!signedData) throw new Error('wallet returned no signedData');
+        const parsed = typeof signedData === 'string' ? JSON.parse(signedData) : signedData;
+        const zkappCommand =
+          parsed?.zkappCommand ||
+          parsed?.data?.zkappCommand ||
+          parsed?.signedData?.zkappCommand ||
+          null;
+        if (!zkappCommand || typeof zkappCommand !== 'object') {
+          throw new Error('wallet signedData did not contain zkappCommand');
+        }
+        const feePayer = zkappCommand?.feePayer?.body?.publicKey || '';
+        if (feePayer && wallet && feePayer !== wallet) {
+          throw new Error(`wallet signed a different fee payer: ${feePayer}`);
+        }
+        if (typeof zkappCommand.memo !== 'string' || !zkappCommand.memo.trim()) {
+          throw new Error('wallet returned a signed transaction without a memo');
+        }
+        return zkappCommand;
       }
 
       function depositDebugLog(event, data = {}) {
@@ -2352,8 +2374,7 @@
           amount,
           memo
         });
-        const txPayload = toAuroTransactionData(built.transaction);
-        const fee = built.fee || '0.0002';
+        const txPayload = toAuroTransactionString(built.transaction);
         depositDebugLog('built', {
           asset,
           tokenId,
@@ -2366,24 +2387,26 @@
         if (typeof provider.sendTransaction === 'function') {
           try {
             const response = await provider.sendTransaction({
-              transaction: txPayload,
-              feePayer: { fee }
+              onlySign: true,
+              transaction: txPayload
             });
-            const txHash = extractWalletTxHash(response) || response?.hash || '';
-            depositDebugLog('wallet-submitted', { asset, tokenId, txHash, response });
+            const zkappCommand = extractSignedZkappCommand(response, wallet);
+            const submitted = await sdk.submitSignedDepositTransaction({ zkappCommand });
+            const txHash = extractWalletTxHash(submitted) || submitted?.hash || '';
+            depositDebugLog('wallet-signed-and-submitted', { asset, tokenId, txHash, response });
             return {
-              method: 'sendTransaction',
+              method: 'sendTransaction:onlySign+submit',
               response,
               txHash,
               asset,
               tokenId: tokenId || null,
-              built
+              built,
+              submitted
             };
           } catch (e) {
             attempts.push(`sendTransaction: ${String(e?.message || e)}`);
             depositDebugLog('wallet-error', { asset, tokenId, error: String(e?.message || e) });
-            const msg = String(e?.message || e);
-            throw new Error(`Auro rejected the ${asset} deposit transaction. No automatic retry was sent. Attempts: ${attempts.join(' | ')}`);
+            throw new Error(`Auro signing or Sepolia submission failed for ${asset}. No automatic retry was sent. Attempts: ${attempts.join(' | ')}`);
           }
         }
         if (typeof provider.request === 'function') {
@@ -2391,23 +2414,26 @@
             {
               method: 'mina_sendTransaction',
               params: {
-                transaction: txPayload,
-                feePayer: { fee }
+                onlySign: true,
+                transaction: txPayload
               }
             }
           ];
           for (const req of requestAttempts) {
             try {
               const response = await provider.request({ method: req.method, params: req.params });
-              const txHash = extractWalletTxHash(response) || response?.hash || '';
-              depositDebugLog('wallet-submitted', { asset, tokenId, txHash, response, method: req.method });
+              const zkappCommand = extractSignedZkappCommand(response, wallet);
+              const submitted = await sdk.submitSignedDepositTransaction({ zkappCommand });
+              const txHash = extractWalletTxHash(submitted) || submitted?.hash || '';
+              depositDebugLog('wallet-signed-and-submitted', { asset, tokenId, txHash, response, method: req.method });
               return {
-                method: req.method,
+                method: `${req.method}:onlySign+submit`,
                 response,
                 txHash,
                 asset,
                 tokenId: tokenId || null,
-                built
+                built,
+                submitted
               };
             } catch (e) {
               attempts.push(`${req.method}: ${String(e?.message || e)}`);
@@ -2702,8 +2728,8 @@
               orderType === 'MARKET' && (!buyCheck.marketExecutable || !sellCheck.marketExecutable) ? 'bad' : 'ok',
               orderType === 'MARKET' ? `buy:${buyCheck.marketExecutable ? 'yes' : 'no'} sell:${sellCheck.marketExecutable ? 'yes' : 'no'}` : 'limit order'
             ) +
-            checklistRow(`Buy note collateral ${buyReq.asset || '-'}`, buyAvail + 1e-9 >= buyReqAmt ? 'ok' : 'bad', `${fmtDisplayNumber(buyReqAmt)} / notes ${fmtDisplayNumber(buyAvail)}`) +
-            checklistRow(`Sell note collateral ${sellReq.asset || '-'}`, sellAvail + 1e-9 >= sellReqAmt ? 'ok' : 'bad', `${fmtDisplayNumber(sellReqAmt)} / notes ${fmtDisplayNumber(sellAvail)}`) +
+            checklistRow(`Buy note collateral ${buyReq.asset || '-'}`, buyAvail + 1e-9 >= buyReqAmt ? 'ok' : 'bad', `${fmtDisplayNumber(buyReqAmt)} / available note amount ${fmtDisplayNumber(buyAvail)}`) +
+            checklistRow(`Sell note collateral ${sellReq.asset || '-'}`, sellAvail + 1e-9 >= sellReqAmt ? 'ok' : 'bad', `${fmtDisplayNumber(sellReqAmt)} / available note amount ${fmtDisplayNumber(sellAvail)}`) +
             checklistNote('Counter-asset note balances update after on-chain trade settlement.') +
             checklistRow('Locked base collateral', lockedBase > 0 ? 'warn' : 'ok', fmtDisplayNumber(lockedBase)) +
             checklistRow('Locked quote collateral', lockedQuote > 0 ? 'warn' : 'ok', fmtDisplayNumber(lockedQuote));
