@@ -2375,6 +2375,7 @@
           memo
         });
         const txPayload = toAuroTransactionString(built.transaction);
+        const fee = Number(built.fee || '0.0002');
         depositDebugLog('built', {
           asset,
           tokenId,
@@ -2388,7 +2389,8 @@
           try {
             const response = await provider.sendTransaction({
               onlySign: true,
-              transaction: txPayload
+              transaction: txPayload,
+              feePayer: { fee }
             });
             const zkappCommand = extractSignedZkappCommand(response, wallet);
             const submitted = await sdk.submitSignedDepositTransaction({ zkappCommand });
@@ -2415,7 +2417,8 @@
               method: 'mina_sendTransaction',
               params: {
                 onlySign: true,
-                transaction: txPayload
+                transaction: txPayload,
+                feePayer: { fee }
               }
             }
           ];
