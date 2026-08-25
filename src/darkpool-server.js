@@ -4084,6 +4084,11 @@ function computeStatusSnapshot(port) {
         archiveRelayEndpoint: ZEKO_ARCHIVE_RELAY_GRAPHQL || null,
         hasDedicatedTxEndpoint: Boolean(ZEKO_TX_GRAPHQL_ENV && ZEKO_TX_GRAPHQL_ENV !== ZEKO_GRAPHQL)
       },
+      userConfirmation: {
+        model: 'zeko-sequencer',
+        ethereumFinalityRequired: false,
+        noteIssuanceRequiresDepositHash: REQUIRE_ONCHAIN_DEPOSIT_TX
+      },
       walletNetwork: WALLET_NETWORK_CONFIG,
       executionPrivacy: {
         currentMode: 'lean',

@@ -2582,7 +2582,7 @@
               setText('vaultOut', {
                 ok: true,
                 pending: true,
-                message: `Resuming on-chain confirmation before note mint (${progress.attempt}/${progress.attempts}).`,
+                message: `Resuming Zeko confirmation before note mint (${progress.attempt}/${progress.attempts}).`,
                 txHash: progress.txHash || pending.txHash,
                 asset: pending.asset,
                 lastError: progress.error || null
@@ -4765,7 +4765,7 @@
           setText('vaultOut', {
             ok: true,
             message: result.txHash
-              ? 'Deposit tx signed and submitted. Waiting for on-chain inclusion before minting the privacy note.'
+              ? 'Deposit tx accepted by the wallet. Waiting for Zeko confirmation before minting the privacy note.'
               : 'Transfer request submitted in wallet. Waiting for tx hash before auto-mint.',
             method: result.method,
             txHash: result.txHash || null,
@@ -4781,8 +4781,8 @@
                   pending: true,
                   message:
                     progress?.phase === 'retrying'
-                      ? `Deposit tx submitted. Waiting for chain inclusion before note mint (${progress.attempt}/${progress.attempts}).`
-                      : `Deposit tx submitted. Confirming on-chain before note mint (${progress.attempt}/${progress.attempts}).`,
+                      ? `Deposit tx submitted. Waiting for Zeko confirmation before note mint (${progress.attempt}/${progress.attempts}).`
+                      : `Deposit tx submitted. Confirming with Zeko before note mint (${progress.attempt}/${progress.attempts}).`,
                   txHash: progress?.txHash || result.txHash || null,
                   asset: progress?.asset || asset,
                   lastError: progress?.error || null
@@ -4862,7 +4862,7 @@
           return;
         }
         if (phase === 'confirming') {
-          sendBtn.textContent = 'Confirming On-Chain...';
+          sendBtn.textContent = 'Confirming with Zeko...';
           return;
         }
         sendBtn.textContent = 'Processing Deposit...';
@@ -5040,7 +5040,7 @@
           updateNoteDepositHint();
           setText(
             'vaultOut',
-            'Privacy notes are enabled with on-chain deposit verification. Sync wallet, submit transfer to vault address, then mint with tx hash.'
+            'Privacy notes use Zeko sequencer confirmation. Sync wallet, submit the transfer to the vault, then mint with the returned tx hash.'
           );
           const marketsResp = await sdk.getMarkets();
           populateMarketSelectors(marketsResp.markets || []);

@@ -13,6 +13,11 @@
 - `GET /api/darkpool/fairness/audit?limit=200`
 - `GET /api/darkpool/frontends/fees?frontendId=...`
 
+The status response exposes `server.userConfirmation`. The hosted Sepolia
+runtime uses `model: "zeko-sequencer"`; `ethereumFinalityRequired` is false
+for ordinary deposits, notes, orders, and trades. Ethereum settlement/finality
+belongs to bridge and rollup settlement assurance, not the user execution path.
+
 ## Account / Balance APIs
 
 - `POST /api/darkpool/accounts/sync-onchain`
