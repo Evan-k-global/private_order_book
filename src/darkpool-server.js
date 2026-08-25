@@ -1917,7 +1917,12 @@ async function getMinaSignerClient() {
     const signerPath = path.join(path.dirname(o1jsEntry), 'mina-signer', 'mina-signer.js');
     minaSignerClientPromise = import(pathToFileURL(signerPath).href).then((mod) => {
       const Client = mod.default;
-      return new Client({ network: 'zeko' });
+      // Zeko Sepolia uses the Mina testnet signing domain for wallet messages.
+      // `zeko:testnet` is the chain/network identifier, not the mina-signer domain.
+      const networkId = String(ZEKO_NETWORK_ID || 'testnet').trim().toLowerCase() === 'mainnet'
+        ? 'mainnet'
+        : 'testnet';
+      return new Client({ network: networkId });
     });
   }
   return minaSignerClientPromise;
