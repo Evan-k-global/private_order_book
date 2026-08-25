@@ -77,6 +77,8 @@ const activityEvents = [];
 const frontendFeeLedger = new Map();
 const protocolFeeBalances = {};
 const participantWallets = new Map();
+const ACTIVITY_PRIVACY_MODE = String(process.env.ACTIVITY_PRIVACY_MODE || 'redacted').trim().toLowerCase();
+const OPERATOR_ACTIVITY_REDACTION_ENABLED = ACTIVITY_PRIVACY_MODE !== 'verbose';
 const WALLET_HASH_SALT = process.env.WALLET_HASH_SALT || 'shadowbook-demo-salt';
 const DARKPOOL_HOST = process.env.DARKPOOL_HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
 const AUTO_RUN_BACKGROUND_WORKERS = String(process.env.AUTO_RUN_BACKGROUND_WORKERS || 'false').toLowerCase() === 'true';
@@ -96,6 +98,9 @@ const ZEKO_FAUCET_GITHUB_TOKEN = String(
   process.env.ZEKO_FAUCET_GITHUB_TOKEN || process.env.GITHUB_TOKEN || ''
 ).trim();
 const REAL_FUNDS_MODE = true;
+// Secure mode is design-only here. Do not label this runtime operator-confidential
+// until an encrypted matcher and attested execution boundary are wired in.
+const SECURE_MODE_IMPLEMENTED = false;
 const ONCHAIN_SYNC_TTL_MS = Number.parseInt(process.env.ONCHAIN_SYNC_TTL_MS || '60000', 10);
 function normalizeAssetMapKey(value) {
   return String(value || '').trim().toUpperCase();
@@ -426,7 +431,13 @@ function createAuditEntry(eventType, payload) {
 }
 
 function recordAuditEvent(eventType, payload) {
-  const entry = createAuditEntry(eventType, payload);
+  const auditPayload = OPERATOR_ACTIVITY_REDACTION_ENABLED
+    ? {
+        privacy: 'operator-redacted',
+        commitment: sha256Hex(`${eventType}:${stableStringify(payload || {})}`)
+      }
+    : payload;
+  const entry = createAuditEntry(eventType, auditPayload);
   auditHeadHash = entry.hash;
   auditTrail.unshift(entry);
   if (auditTrail.length > 5000) auditTrail.pop();
@@ -435,6 +446,14 @@ function recordAuditEvent(eventType, payload) {
     auditWriteChain = auditWriteChain.then(() => appendFile(auditLogPath, line, 'utf8')).catch(() => {});
   }
   return entry;
+}
+
+function storedActivityDetails(type, details = {}) {
+  if (!OPERATOR_ACTIVITY_REDACTION_ENABLED) return details;
+  return {
+    privacy: 'operator-redacted',
+    commitment: sha256Hex(`${type}:${stableStringify(details || {})}`)
+  };
 }
 
 async function loadAuditHeadFromFile() {
@@ -613,14 +632,6 @@ function getAuditChainStatus(entriesNewestFirst) {
     breakIndex: null,
     reason: null
   };
-}
-
-function encodePrivate(value) {
-  return Buffer.from(value, 'utf8').toString('base64');
-}
-
-function decodePrivate(value) {
-  return Buffer.from(value, 'base64').toString('utf8');
 }
 
 function startManagedBackgroundProcess(name, command, envOverrides = {}) {
@@ -1960,7 +1971,7 @@ function logActivity(accountId, type, details = {}) {
     id: randomUUID(),
     accountId,
     type,
-    details,
+    details: storedActivityDetails(type, details),
     createdAtUnixMs: now()
   });
   if (activityEvents.length > 5000) activityEvents.pop();
@@ -2038,7 +2049,6 @@ function openOrdersSnapshot() {
       reservedBaseRemaining: o.reservedBaseRemaining,
       timeInForce: o.timeInForce,
       commitment: o.commitment,
-      encryptedOrder: o.encryptedOrder,
       createdAtUnixMs: o.createdAtUnixMs,
       sequenceNumber: o.sequenceNumber || null,
       sequencingReceiptHash: o.sequencingReceiptHash || null,
@@ -2412,10 +2422,16 @@ async function loadEngineState() {
     activityEvents.length = 0;
     for (const event of loadedActivityEvents) {
       if (!event || typeof event.accountId !== 'string' || typeof event.type !== 'string') continue;
-      activityEvents.push(event);
+      activityEvents.push({
+        ...event,
+        details: storedActivityDetails(event.type, event.details || {})
+      });
     }
     for (const order of loadedOrders) {
       if (!order || !order.id || !order.pair) continue;
+      // Older snapshots carried base64-encoded plaintext order payloads. They
+      // were never encryption; discard them when loading the state.
+      delete order.encryptedOrder;
       orders.set(order.id, order);
       const book = getBook(order.pair);
       if (order.side === 'BUY') book.buys.push(order.id);
@@ -3413,7 +3429,6 @@ function placeOrder({
     reservedBaseRemaining: reservedBase,
     timeInForce,
     commitment: sha256Hex(payload),
-    encryptedOrder: encodePrivate(payload),
     createdAtUnixMs: now(),
     cancelToken: randomBytes(16).toString('hex'),
     status: 'OPEN',
@@ -3457,7 +3472,6 @@ function sanitizeOrder(order) {
     commitment: order.commitment,
     sequenceNumber: order.sequenceNumber || null,
     sequencingReceiptHash: order.sequencingReceiptHash || null,
-    encryptedOrder: order.encryptedOrder,
     makerTag: order.makerTag || null,
     frontendId: order.frontendId || null,
     status: order.status,
@@ -4059,6 +4073,18 @@ function computeStatusSnapshot(port) {
         hasDedicatedTxEndpoint: Boolean(ZEKO_TX_GRAPHQL_ENV && ZEKO_TX_GRAPHQL_ENV !== ZEKO_GRAPHQL)
       },
       walletNetwork: WALLET_NETWORK_CONFIG,
+      executionPrivacy: {
+        currentMode: 'lean',
+        fullModeReferencePath: true,
+        proofWorkerAutoStart: Boolean(AUTO_RUN_PROOF_WORKER),
+        secureModeAvailable: SECURE_MODE_IMPLEMENTED,
+        secureModeBoundary: 'encrypted matcher inside an attested execution environment'
+      },
+      activityPrivacy: {
+        mode: ACTIVITY_PRIVACY_MODE,
+        serverDetailsStored: !OPERATOR_ACTIVITY_REDACTION_ENABLED,
+        clientTimelineStorage: 'browser-local'
+      },
       da: {
         mode: DA_MODE,
         enabled: Boolean(DA_ENDPOINT),
@@ -5279,7 +5305,7 @@ async function main() {
         if (order.cancelToken !== token) throw new Error('invalid token');
         writeJson(res, 200, {
           order: sanitizeOrder(order),
-          decryptedOrderPayload: decodePrivate(order.encryptedOrder),
+          orderPayloadCommitment: order.commitment,
           privateFills: privateFillsByOrder.get(orderId) || [],
           issuedNotes: orderIssuedNotes.get(orderId) || []
         });

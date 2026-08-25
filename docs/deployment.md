@@ -38,6 +38,16 @@ The profile intentionally does not include archive endpoints, proof-agent settin
 
 The Render start command does not start `src/da-relay-server.js`. Keep `DA_MODE=disabled` and leave `DA_ENDPOINT` unset unless a separate relay service has been deployed and tested.
 
+### Activity privacy boundary
+
+The hosted app defaults to `ACTIVITY_PRIVACY_MODE=redacted`. Server-side
+activity and fairness-audit records retain event type, time, and a commitment,
+not order prices, quantities, note hashes, wallet addresses, or settlement
+amounts. Detailed order and fill history is kept in the user's browser for the
+`Your Activity` view. This reduces operator-accessible records but does not hide
+live order inputs from the central matcher; confidential matching still needs a
+TEE, MPC, wallet-side matching, or another private execution boundary.
+
 ### DA relay boundary
 
 The relay accepts encrypted ShadowBook payloads and can persist a signed receipt locally. Its default `DA_RELAY_FORWARD_MODE=none` is stored-only behavior; it is not proof that data has been anchored to Zeko or Ethereum Sepolia. Actual forwarding requires a separately deployed bridge or command adapter and its own `ZEKO_DA_BRIDGE_URL` or `DA_RELAY_COMMAND`.

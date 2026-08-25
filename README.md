@@ -66,7 +66,6 @@ That remote proof agent fetches the next pending proof job snapshot, builds the 
 ## Key Docs
 
 - [Render deployment and runtime topology](./docs/deployment.md)
-- [Zeko Sepolia builder notes](./docs/zeko-sepolia-builder.md)
 - [Architecture and extensibility](./docs/architecture.md)
 - [Competitive architecture and privacy landscape](./docs/competitive-architecture-landscape.md)
 - [Protocol runbook and local operations](./docs/runbook.md)
@@ -78,6 +77,7 @@ That remote proof agent fetches the next pending proof job snapshot, builds the 
 - [Full-mode implementation path](./docs/full-mode-implementation.md)
 - [Full-mode runbook](./docs/full-mode-runbook.md)
 - [Full-mode production gaps](./docs/full-mode-production-gaps.md)
+- [Secure-mode confidential matching design](./docs/secure-mode-pseudocode.md)
 - [On-chain order book reference path](./docs/onchain-orderbook-reference.md)
 
 ## Agent Skills

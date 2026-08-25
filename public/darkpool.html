@@ -1701,6 +1701,9 @@
               <input id="activityMaxQty" class="compact-input" type="number" step="any" placeholder="-" />
             </div>
           </div>
+          <div class="hint-box activity-privacy-note">
+            Your detailed order and fill history is kept in this browser. The server stores only redacted activity commitments.
+          </div>
           <div class="activity-table">
             <div class="activity-head">
               <div><button type="button" id="activityTimeHeader" title="Toggle newest/oldest first">Time</button></div>
@@ -2297,33 +2300,19 @@
         return '';
       }
 
-      function toAuroTransactionString(transaction) {
+      function toAuroTransactionData(transaction) {
         const original = typeof transaction === 'string' ? JSON.parse(transaction) : transaction;
         const tx = JSON.parse(JSON.stringify(original));
         if (tx?.feePayer?.body?.fee === '0') {
           // Lumina works around an Auro edge case by forcing a non-zero fee here.
           tx.feePayer.body.fee = '1';
         }
-        return JSON.stringify(tx);
+        return tx;
       }
 
-      function extractSignedZkappCommand(response, wallet) {
-        const signedData = response?.signedData || response;
-        if (!signedData) throw new Error('wallet returned no signedData');
-        const parsed = typeof signedData === 'string' ? JSON.parse(signedData) : signedData;
-        const zkappCommand =
-          parsed?.zkappCommand ||
-          parsed?.data?.zkappCommand ||
-          parsed?.signedData?.zkappCommand ||
-          null;
-        if (!zkappCommand || typeof zkappCommand !== 'object') {
-          throw new Error('wallet signedData did not contain zkappCommand');
-        }
-        if (zkappCommand?.feePayer?.body?.publicKey && zkappCommand.feePayer.body.publicKey !== wallet) {
-          zkappCommand.feePayer.authorization =
-            '7mWxjLYgbJUkZNcGouvhVj5tJ8yu9hoexb9ntvPK8t5LHqzmrL6QJjjKtf5SgmxB4QWkDw7qoMMbbNGtHVpsbJHPyTy2EzRQ';
-        }
-        return zkappCommand;
+      function depositDebugLog(event, data = {}) {
+        if (window.SHADOWBOOK_DEBUG_DEPOSITS !== true) return;
+        console.info('[shadowbook:deposit]', event, data);
       }
 
       async function syncWalletContext(wallet, outputId) {
@@ -2363,37 +2352,38 @@
           amount,
           memo
         });
-        const txPayload = toAuroTransactionString(built.transaction);
+        const txPayload = toAuroTransactionData(built.transaction);
+        const fee = built.fee || '0.0002';
+        depositDebugLog('built', {
+          asset,
+          tokenId,
+          amount,
+          fee,
+          feeSource: built.feeSource,
+          receiverNeedsTokenAccount: built.receiverNeedsTokenAccount,
+          transaction: txPayload
+        });
         if (typeof provider.sendTransaction === 'function') {
           try {
             const response = await provider.sendTransaction({
-              onlySign: true,
-              transaction: txPayload
+              transaction: txPayload,
+              feePayer: { fee }
             });
-            const zkappCommand = extractSignedZkappCommand(response, wallet);
-            const submitted = await sdk.submitSignedDepositTransaction({
-              zkappCommand
-            });
-            const txHash = extractWalletTxHash(submitted) || submitted?.hash || '';
+            const txHash = extractWalletTxHash(response) || response?.hash || '';
+            depositDebugLog('wallet-submitted', { asset, tokenId, txHash, response });
             return {
-              method: 'sendTransaction:onlySign+submit',
+              method: 'sendTransaction',
               response,
               txHash,
               asset,
               tokenId: tokenId || null,
-              built,
-              submitted
+              built
             };
           } catch (e) {
             attempts.push(`sendTransaction: ${String(e?.message || e)}`);
+            depositDebugLog('wallet-error', { asset, tokenId, error: String(e?.message || e) });
             const msg = String(e?.message || e);
-            if (msg.toLowerCase().includes('sendzkapp') || msg.toLowerCase().includes('sequencer') || msg.includes('Invalid_fee_excess')) {
-              throw new Error(
-                `Wallet signed the token deposit transaction, but sequencer submission failed for ${asset}. ` +
-                `Attempt: ${attempts.join(' | ')}`
-              );
-            }
-            throw new Error(`Wallet did not accept the generated deposit transaction for ${asset}. Attempts: ${attempts.join(' | ')}`);
+            throw new Error(`Auro rejected the ${asset} deposit transaction. No automatic retry was sent. Attempts: ${attempts.join(' | ')}`);
           }
         }
         if (typeof provider.request === 'function') {
@@ -2401,30 +2391,27 @@
             {
               method: 'mina_sendTransaction',
               params: {
-                onlySign: true,
-                transaction: txPayload
+                transaction: txPayload,
+                feePayer: { fee }
               }
             }
           ];
           for (const req of requestAttempts) {
             try {
               const response = await provider.request({ method: req.method, params: req.params });
-              const zkappCommand = extractSignedZkappCommand(response, wallet);
-              const submitted = await sdk.submitSignedDepositTransaction({
-                zkappCommand
-              });
-              const txHash = extractWalletTxHash(submitted) || submitted?.hash || '';
+              const txHash = extractWalletTxHash(response) || response?.hash || '';
+              depositDebugLog('wallet-submitted', { asset, tokenId, txHash, response, method: req.method });
               return {
-                method: `${req.method}:onlySign+submit`,
+                method: req.method,
                 response,
                 txHash,
                 asset,
                 tokenId: tokenId || null,
-                built,
-                submitted
+                built
               };
             } catch (e) {
               attempts.push(`${req.method}: ${String(e?.message || e)}`);
+              depositDebugLog('wallet-error', { asset, tokenId, error: String(e?.message || e), method: req.method });
             }
           }
         }
@@ -2998,6 +2985,20 @@
       async function cancelOpenOrder(orderId, cancelToken) {
         if (!orderId || !cancelToken) throw new Error('cancel credentials missing');
         const result = await sdk.cancelOrder(orderId, cancelToken);
+        const wallet = syncActivityWalletFromOrder(false);
+        if (wallet) {
+          const order = result?.order || {};
+          rememberLocalActivity(wallet, [
+            makeLocalActivityEvent('order_canceled', {
+              orderId,
+              pair: order.pair,
+              side: order.side,
+              limitPrice: order.limitPrice,
+              quantity: order.quantity,
+              released: result.released || null
+            })
+          ]);
+        }
         if (document.getElementById('replaceOrderId').value.trim() === String(orderId)) {
           clearReplaceOrderState();
         }
@@ -3142,6 +3143,124 @@
           activityWalletEl.value = orderWallet;
         }
         return activityWalletEl.value.trim() || orderWallet;
+      }
+
+      const LOCAL_ACTIVITY_STORAGE_PREFIX = 'shadowbook.activity.v1.';
+      function localActivityStorageKey(wallet) {
+        let hash = 1469598103934665603n;
+        for (const char of String(wallet || '').trim().toLowerCase()) {
+          hash ^= BigInt(char.codePointAt(0));
+          hash = BigInt.asUintN(64, hash * 1099511628211n);
+        }
+        return `${LOCAL_ACTIVITY_STORAGE_PREFIX}${hash.toString(16)}`;
+      }
+
+      function readLocalActivity(wallet) {
+        if (!wallet) return [];
+        try {
+          const parsed = JSON.parse(localStorage.getItem(localActivityStorageKey(wallet)) || '[]');
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      }
+
+      function writeLocalActivity(wallet, events) {
+        if (!wallet) return;
+        try {
+          localStorage.setItem(
+            localActivityStorageKey(wallet),
+            JSON.stringify(events.slice(0, 500))
+          );
+        } catch {}
+      }
+
+      function makeLocalActivityEvent(type, details, createdAtUnixMs = Date.now()) {
+        return {
+          id: `local_${type}_${createdAtUnixMs}_${Math.random().toString(16).slice(2)}`,
+          accountId: 'local',
+          type,
+          details,
+          createdAtUnixMs
+        };
+      }
+
+      function rememberLocalActivity(wallet, events) {
+        if (!wallet || !Array.isArray(events) || !events.length) return;
+        const existing = readLocalActivity(wallet);
+        const merged = [...events, ...existing]
+          .filter((event) => event && typeof event.type === 'string')
+          .sort((a, b) => Number(b.createdAtUnixMs || 0) - Number(a.createdAtUnixMs || 0));
+        const seen = new Set();
+        writeLocalActivity(
+          wallet,
+          merged.filter((event) => {
+            const details = event.details || {};
+            const identity = `${event.type}:${details.orderId || details.tradeId || event.id}`;
+            if (seen.has(identity)) return false;
+            seen.add(identity);
+            return true;
+          })
+        );
+      }
+
+      function mergeActivityWithLocal(wallet, serverEvents) {
+        const localEvents = readLocalActivity(wallet);
+        const safeServerEvents = (Array.isArray(serverEvents) ? serverEvents : []).map((event) => {
+          if (event?.details?.privacy === 'operator-redacted') return event;
+          return { ...event, details: { privacy: 'operator-redacted' } };
+        });
+        const localTypes = new Set(['order_submitted', 'trade_fill', 'order_canceled', 'order_replaced']);
+        const filteredServerEvents = safeServerEvents.filter((serverEvent) => {
+          if (!localTypes.has(serverEvent.type)) return true;
+          return !localEvents.some(
+            (localEvent) =>
+              localEvent.type === serverEvent.type &&
+              Math.abs(Number(localEvent.createdAtUnixMs || 0) - Number(serverEvent.createdAtUnixMs || 0)) < 10000
+          );
+        });
+        return [...localEvents, ...filteredServerEvents];
+      }
+
+      function rememberOrderActivity(wallet, result, replacedOrderId = '') {
+        const order = result?.replacementOrder || result?.order;
+        if (!wallet || !order) return;
+        const createdAtUnixMs = Number(order.createdAtUnixMs || Date.now());
+        const events = [
+          makeLocalActivityEvent(
+            replacedOrderId ? 'order_replaced' : 'order_submitted',
+            {
+              orderId: order.id,
+              replacedOrderId: replacedOrderId || undefined,
+              pair: order.pair,
+              side: order.side,
+              orderType: order.orderType || 'LIMIT',
+              limitPrice: order.limitPrice,
+              quantity: order.quantity,
+              tif: order.timeInForce,
+              sequenceNumber: order.sequenceNumber,
+              sequencingReceiptHash: order.sequencingReceiptHash
+            },
+            createdAtUnixMs
+          )
+        ];
+        for (const fill of Array.isArray(result.privateFills) ? result.privateFills : []) {
+          events.push(
+            makeLocalActivityEvent(
+              'trade_fill',
+              {
+                pair: order.pair,
+                side: order.side,
+                price: fill.price,
+                quantity: fill.quantity,
+                tradeId: fill.tradeId,
+                counterpartyCommitment: fill.counterpartyCommitment
+              },
+              Number(fill.createdAtUnixMs || createdAtUnixMs)
+            )
+          );
+        }
+        rememberLocalActivity(wallet, events);
       }
 
       function scheduleSettlementUiRefresh() {
@@ -3917,7 +4036,7 @@
         }
         try {
           const activity = await sdk.getActivity(wallet, 100);
-          const withdrawals = (activity.events || []).filter((ev) => ev.type === 'note_withdrawn');
+          const withdrawals = mergeActivityWithLocal(wallet, activity.events || []).filter((ev) => ev.type === 'note_withdrawn');
           const latest = withdrawals[0];
           status.textContent = latest
             ? `${latest.details?.asset || '-'} ${fmtDisplayNumber(latest.details?.amount)} at ${fmtUtcTime(latest.createdAtUnixMs)}`
@@ -3992,7 +4111,7 @@
         const wallet = syncActivityWalletFromOrder(false);
         const limit = Math.max(1, Number(document.getElementById('activityLimit').value || 150));
         const data = await sdk.getActivity(wallet, limit);
-        renderActivity(data.events || [], data.openOrders || []);
+        renderActivity(mergeActivityWithLocal(wallet, data.events || []), data.openOrders || []);
       }
 
       async function refreshFeeStats() {
@@ -4212,6 +4331,7 @@
           }
         }
         setText('orderOut', result);
+        rememberOrderActivity(wallet, result, replaceOrderId);
         const effectiveOrder = result.replacementOrder || result.order || null;
         if (effectiveOrder?.id) document.getElementById('inspectOrderId').value = effectiveOrder.id;
         if (result.cancelToken) document.getElementById('inspectToken').value = result.cancelToken;
@@ -4454,6 +4574,14 @@
             amount: Number(document.getElementById('noteAmount').value || 0),
             txHash
           });
+          rememberLocalActivity(document.getElementById('noteWallet').value.trim(), [
+            makeLocalActivityEvent('note_issued', {
+              asset: document.getElementById('noteAsset').value.trim(),
+              amount: Number(document.getElementById('noteAmount').value || 0),
+              noteHash: result?.note?.note || null,
+              txHash
+            })
+          ]);
           setText('vaultOut', result);
           if (result.note?.note) {
             document.getElementById('noteInput').value = result.note.note;
@@ -4525,6 +4653,14 @@
                 });
               }
             });
+            rememberLocalActivity(document.getElementById('noteWallet').value.trim(), [
+              makeLocalActivityEvent('note_issued', {
+                asset,
+                amount: minted?.note?.amount || null,
+                noteHash: minted?.note?.note || null,
+                txHash: result.txHash
+              })
+            ]);
             setText('vaultOut', {
               ok: true,
               message: 'Deposit confirmed and privacy note minted.',
@@ -4600,6 +4736,13 @@
             message: `Preparing ${fmtDisplayNumber(amount)} ${formatDisplayAsset(asset)} withdrawal to ${wallet}. Spending private notes and submitting payout transaction...`
           });
           const result = await sdk.withdraw({ wallet, asset, amount });
+          rememberLocalActivity(wallet, [
+            makeLocalActivityEvent('note_withdrawn', {
+              asset,
+              amount,
+              txHash: result?.txHash || result?.payout?.txHash || null
+            })
+          ]);
           setText('vaultOut', result);
           await refreshNotesPortfolio();
           await refreshNoteAssetOptions();
