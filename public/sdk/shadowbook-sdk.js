@@ -166,6 +166,10 @@
     return this.request('/api/darkpool/vault/deposit-recover', { method: 'POST', body: payload });
   };
 
+  ShadowBookClient.prototype.cancelDepositIntent = function cancelDepositIntent(payload) {
+    return this.request('/api/darkpool/vault/deposit-cancel', { method: 'POST', body: payload });
+  };
+
   ShadowBookClient.prototype.depositAuto = function depositAuto(payload) {
     return this.request('/api/darkpool/vault/deposit-auto', { method: 'POST', body: payload });
   };

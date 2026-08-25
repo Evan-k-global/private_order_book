@@ -1827,6 +1827,7 @@
               <button class="txn" id="sendDepositTxBtn">Deposit Funds &amp; Mint Notes</button>
               <button class="ghost" id="withdrawNotesPrimaryBtn">Redeem Notes &amp; Withdraw</button>
             </div>
+            <button class="ghost" id="clearDepositRecoveryBtn" hidden>Clear Canceled Deposit Request</button>
             <div class="withdraw-card">
               <div class="withdraw-summary">
                 <div>
@@ -1921,6 +1922,7 @@
       const WALLET_SYNC_COOLDOWN_MS = 20000;
       let activeAuroWallet = '';
       let autoAuroSyncInFlight = false;
+      let activeDepositIntentId = '';
       const sepoliaWalletNetwork = {
         key: 'zekoEthereumSepolia',
         label: 'Zeko Ethereum Sepolia',
@@ -2366,6 +2368,45 @@
         }
       }
 
+      function setDepositRecoveryControl(intentId = '', visible = false) {
+        activeDepositIntentId = intentId || '';
+        const button = document.getElementById('clearDepositRecoveryBtn');
+        if (!button) return;
+        button.hidden = !visible;
+        button.disabled = false;
+        button.textContent = 'Clear Canceled Deposit Request';
+      }
+
+      function isWalletCancellationError(error) {
+        const message = String(error?.message || error || '').toLowerCase();
+        return (
+          /user\s*(rejected|denied|cancelled|canceled)/i.test(message) ||
+          /request\s*(rejected|denied|cancelled|canceled)/i.test(message) ||
+          /wallet.*(rejected|denied|cancelled|canceled)/i.test(message) ||
+          /code\s*[:=]?\s*1002\b/i.test(message)
+        );
+      }
+
+      async function clearDepositRecovery(intentId, { cancelServerIntent = true } = {}) {
+        if (!intentId) return;
+        if (cancelServerIntent) {
+          try { await sdk.cancelDepositIntent({ intentId }); } catch {}
+        }
+        clearPendingDeposit('', intentId);
+        if (activeDepositIntentId === intentId) setDepositRecoveryControl('', false);
+        setDepositBusyState(false);
+      }
+
+      document.getElementById('clearDepositRecoveryBtn').onclick = async () => {
+        const intentId = activeDepositIntentId || readPendingDeposit()?.intentId || '';
+        await clearDepositRecovery(intentId, { cancelServerIntent: true });
+        setText('vaultOut', {
+          ok: true,
+          pending: false,
+          message: 'Canceled deposit request cleared. No funds were resent. Sync the wallet before starting another deposit.'
+        });
+      };
+
       async function syncWalletContext(wallet, outputId) {
         if (!wallet) throw new Error('Wallet is required');
         const result = await sdk.syncOnchainBalance({ wallet });
@@ -2601,12 +2642,14 @@
           amount: Number(context.amount || 0)
         };
         rememberPendingDeposit(payload);
+        setDepositRecoveryControl(intentId, true);
         const attempts = 120;
         for (let i = 0; i < attempts; i += 1) {
           try {
             const result = await sdk.recoverDepositIntent({ intentId });
             if (result.recovered && result.note?.note) {
               clearPendingDeposit('', intentId);
+              setDepositRecoveryControl('', false);
               document.getElementById('noteInput').value = result.note.note;
               await syncWalletContext(payload.wallet);
               await refreshNoteAssetOptions();
@@ -2614,6 +2657,10 @@
               await refreshPretradeChecklist();
               if (isActivityAutoRefreshEnabled()) await refreshActivity();
               return result;
+            }
+            if (result.status === 'canceled') {
+              await clearDepositRecovery(intentId, { cancelServerIntent: false });
+              throw new Error('deposit request was canceled in the wallet; no funds were sent');
             }
             setDepositBusyState(true, 'confirming');
             setText('vaultOut', {
@@ -4869,6 +4916,15 @@
             result = await sendDepositTxWithWallet();
           } catch (error) {
             if (!error?.depositIntentId) throw error;
+            if (isWalletCancellationError(error)) {
+              await clearDepositRecovery(error.depositIntentId, { cancelServerIntent: true });
+              setText('vaultOut', {
+                ok: true,
+                pending: false,
+                message: 'Wallet request canceled. No deposit was submitted and no note was changed.'
+              });
+              return;
+            }
             const context = error.depositContext || {
               wallet: document.getElementById('noteWallet').value.trim(),
               asset,

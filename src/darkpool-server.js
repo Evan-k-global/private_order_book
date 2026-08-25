@@ -1542,6 +1542,16 @@ async function recoverDepositIntent(intentId) {
       verificationMode: 'zeko-balance-delta-recovery'
     };
   }
+  if (intent.status === 'canceled') {
+    return {
+      ok: true,
+      recovered: false,
+      pending: false,
+      intentId,
+      status: 'canceled',
+      verificationMode: 'zeko-balance-delta-recovery'
+    };
+  }
   if (Number(intent.expiresAtUnixMs || 0) <= now()) {
     depositIntents.delete(intentId);
     queueEngineStatePersist();
@@ -1606,6 +1616,18 @@ async function recoverDepositIntent(intentId) {
     participantBalances: accountBalanceSnapshot(accountId),
     poolTotals
   };
+}
+
+function cancelDepositIntent(intentId) {
+  const intent = depositIntents.get(intentId);
+  if (!intent) return { ok: true, canceled: false, intentId };
+  if (intent.status === 'claimed' && intent.note) {
+    throw new Error('cannot cancel a deposit intent after a note was issued');
+  }
+  intent.status = 'canceled';
+  intent.canceledAtUnixMs = now();
+  queueEngineStatePersist();
+  return { ok: true, canceled: true, intentId, status: 'canceled' };
 }
 
 function hasOpenOrdersForAccount(accountId) {
@@ -5601,6 +5623,13 @@ async function main() {
         const body = await readJsonBody(req);
         const intentId = requireString(body.intentId, 'intentId');
         writeJson(res, 200, await recoverDepositIntent(intentId));
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/vault/deposit-cancel') {
+        const body = await readJsonBody(req);
+        const intentId = requireString(body.intentId, 'intentId');
+        writeJson(res, 200, cancelDepositIntent(intentId));
         return;
       }
 
