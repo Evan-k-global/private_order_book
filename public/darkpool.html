@@ -2356,46 +2356,6 @@
         const memo = `shadowbook-deposit:${asset}`;
         const attempts = [];
 
-        if (isNativeAsset(asset)) {
-          if (typeof provider.sendPayment === 'function') {
-            try {
-              const response = await provider.sendPayment({
-                to: vaultDepositAddress,
-                amount: String(amount),
-                memo
-              });
-              const txHash = extractWalletTxHash(response);
-              return { method: 'sendPayment', response, txHash, asset, tokenId: null };
-            } catch (e) {
-              attempts.push(`sendPayment: ${String(e?.message || e)}`);
-            }
-          }
-          if (typeof provider.request === 'function') {
-            const requestAttempts = [
-              {
-                method: 'mina_sendPayment',
-                params: {
-                  to: vaultDepositAddress,
-                  amount: String(amount),
-                  memo
-                }
-              }
-            ];
-            for (const req of requestAttempts) {
-              try {
-                const response = await provider.request({ method: req.method, params: req.params });
-                const txHash = extractWalletTxHash(response);
-                return { method: req.method, response, txHash, asset, tokenId: null };
-              } catch (e) {
-                attempts.push(`${req.method}: ${String(e?.message || e)}`);
-              }
-            }
-          }
-          throw new Error(
-            `Wallet did not accept the native payment deposit for ${asset}. Attempts: ${attempts.join(' | ') || 'none'}`
-          );
-        }
-
         const built = await sdk.buildDepositTransaction({
           wallet,
           asset,
@@ -2433,7 +2393,7 @@
                 `Attempt: ${attempts.join(' | ')}`
               );
             }
-            throw new Error(`Wallet did not accept the generated token deposit transaction for ${asset}. Attempts: ${attempts.join(' | ')}`);
+            throw new Error(`Wallet did not accept the generated deposit transaction for ${asset}. Attempts: ${attempts.join(' | ')}`);
           }
         }
         if (typeof provider.request === 'function') {
@@ -2469,7 +2429,7 @@
           }
         }
         throw new Error(
-          `Wallet did not accept the generated token deposit transaction for ${asset}. ` +
+          `Wallet did not accept the generated deposit transaction for ${asset}. ` +
           `Use wallet UI to send to ${vaultDepositAddress}, then click Find Latest Eligible Deposit Tx. ` +
           `Attempts: ${attempts.join(' | ') || 'none'}`
         );

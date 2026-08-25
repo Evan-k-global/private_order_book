@@ -13,7 +13,7 @@ import { FungibleToken } from 'mina-fungible-token';
 
 const API_BASE = (process.env.DARKPOOL_API || 'http://127.0.0.1:8791').replace(/\/$/, '');
 const ZEKO_GRAPHQL = String(process.env.ZEKO_GRAPHQL || '').trim();
-const TX_FEE = String(process.env.TX_FEE || '100000000').trim();
+const TX_FEE = String(process.env.TX_FEE || '200000').trim();
 const OPERATOR_PRIVATE_KEY = String(
   process.env.PAYOUT_OPERATOR_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY || ''
 ).trim();

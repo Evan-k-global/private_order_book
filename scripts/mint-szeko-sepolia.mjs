@@ -14,7 +14,7 @@ import { FungibleToken, FungibleTokenAdmin } from 'mina-fungible-token';
 import { appendFile, writeFile } from 'node:fs/promises';
 
 const GRAPHQL = process.env.ZEKO_GRAPHQL || 'https://sepolia.zeko.io/graphql';
-const NETWORK_ID = 'zeko';
+const NETWORK_ID = 'testnet';
 const SYMBOL = process.env.TOKEN_SYMBOL || 'sZEKO';
 const DECIMALS = Number.parseInt(process.env.TOKEN_DECIMALS || '9', 10);
 const SUPPLY_WHOLE = process.env.TOKEN_SUPPLY_WHOLE || '100000';
@@ -41,6 +41,19 @@ function shouldUseSinglePassFallback(graphql, error) {
   return graphql.includes('sepolia.zeko.io') && msg.includes('getAccount: Could not find account for public key');
 }
 
+async function fetchGenesisConstantsWithRetry(fetchModule, graphql) {
+  let lastError;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      return await fetchModule.fetchGenesisConstants(graphql);
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 const o1jsTransactionModuleUrl = new URL(
   '../node_modules/.pnpm/o1js@2.13.0/node_modules/o1js/dist/node/lib/mina/v1/transaction.js',
   import.meta.url
@@ -49,16 +62,13 @@ const o1jsFetchModuleUrl = new URL(
   '../node_modules/.pnpm/o1js@2.13.0/node_modules/o1js/dist/node/lib/mina/v1/fetch.js',
   import.meta.url
 ).href;
-
 async function buildTransactionWithFallback(network, graphql, sender, fee, fn, options = {}) {
   const { preferSinglePass = false } = options;
   const useSinglePass = preferSinglePass && graphql.includes('sepolia.zeko.io');
   Mina.setActiveInstance(network);
   if (useSinglePass) {
     const internal = await import(o1jsTransactionModuleUrl);
-    const fetchInternal = await import(o1jsFetchModuleUrl);
     Mina.setActiveInstance(network);
-    await fetchInternal.fetchGenesisConstants(graphql);
     return await internal.createTransaction(
       { sender, fee },
       fn,
@@ -75,9 +85,7 @@ async function buildTransactionWithFallback(network, graphql, sender, fee, fn, o
   } catch (error) {
     if (!shouldUseSinglePassFallback(graphql, error)) throw error;
     const internal = await import(o1jsTransactionModuleUrl);
-    const fetchInternal = await import(o1jsFetchModuleUrl);
     Mina.setActiveInstance(network);
-    await fetchInternal.fetchGenesisConstants(graphql);
     return await internal.createTransaction(
       { sender, fee },
       fn,
@@ -148,6 +156,8 @@ async function main() {
 
   const network = Mina.Network({ networkId: NETWORK_ID, mina: GRAPHQL, archive: GRAPHQL });
   Mina.setActiveInstance(network);
+  const fetchInternal = await import(o1jsFetchModuleUrl);
+  await fetchGenesisConstantsWithRetry(fetchInternal, GRAPHQL);
 
   console.log('[sZEKO] compiling token contracts...');
   await FungibleTokenAdmin.compile();
@@ -191,7 +201,7 @@ async function main() {
         allowUpdates: true,
       });
       await token.initialize(adminAddress, UInt8.from(DECIMALS), Bool(false));
-    }, { preferSinglePass: true });
+    });
 
     await deployTx.prove();
     deployTx.sign([deployerKey, adminKey, tokenKey]);

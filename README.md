@@ -66,6 +66,7 @@ That remote proof agent fetches the next pending proof job snapshot, builds the 
 ## Key Docs
 
 - [Render deployment and runtime topology](./docs/deployment.md)
+- [Zeko Sepolia builder notes](./docs/zeko-sepolia-builder.md)
 - [Architecture and extensibility](./docs/architecture.md)
 - [Competitive architecture and privacy landscape](./docs/competitive-architecture-landscape.md)
 - [Protocol runbook and local operations](./docs/runbook.md)

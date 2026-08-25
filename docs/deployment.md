@@ -42,7 +42,7 @@ The Render start command does not start `src/da-relay-server.js`. Keep `DA_MODE=
 
 The relay accepts encrypted ShadowBook payloads and can persist a signed receipt locally. Its default `DA_RELAY_FORWARD_MODE=none` is stored-only behavior; it is not proof that data has been anchored to Zeko or Ethereum Sepolia. Actual forwarding requires a separately deployed bridge or command adapter and its own `ZEKO_DA_BRIDGE_URL` or `DA_RELAY_COMMAND`.
 
-When a relay is separately deployed, its payload should identify Sepolia as `network: "zeko:testnet"`. That is the live GraphQL network identifier returned by `https://sepolia.zeko.io/graphql`; the o1js transaction network id remains `zeko`.
+When a relay is separately deployed, its payload should identify Sepolia as `network: "zeko:testnet"`. That is the live GraphQL network identifier returned by `https://sepolia.zeko.io/graphql`. For o1js/Auro-signed Sepolia transactions, use the `testnet` signing domain; these identifiers are not interchangeable.
 
 This is the simplest deployment shape for the demo.
 

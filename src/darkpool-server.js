@@ -26,7 +26,10 @@ const CONFIGURED_ZEKO_GRAPHQL = String(process.env.ZEKO_GRAPHQL || '').trim();
 const ZEKO_GRAPHQL = isSepoliaGraphqlEndpoint(CONFIGURED_ZEKO_GRAPHQL)
   ? CONFIGURED_ZEKO_GRAPHQL
   : SEPOLIA_ZEKO_GRAPHQL;
-const ZEKO_NETWORK_ID = 'zeko';
+const CONFIGURED_ZEKO_NETWORK_ID = String(process.env.ZEKO_NETWORK_ID || '').trim();
+const ZEKO_NETWORK_ID = isSepoliaGraphqlEndpoint(ZEKO_GRAPHQL)
+  ? 'testnet'
+  : CONFIGURED_ZEKO_NETWORK_ID || 'zeko';
 const ZEKO_TX_GRAPHQL_ENV = isSepoliaGraphqlEndpoint(process.env.ZEKO_TX_GRAPHQL) ? process.env.ZEKO_TX_GRAPHQL : '';
 const ZEKO_ARCHIVE_GRAPHQL = isSepoliaGraphqlEndpoint(process.env.ZEKO_ARCHIVE_GRAPHQL) ? process.env.ZEKO_ARCHIVE_GRAPHQL : '';
 const ZEKO_ARCHIVE_RELAY_GRAPHQL = isSepoliaGraphqlEndpoint(process.env.ZEKO_ARCHIVE_RELAY_GRAPHQL)
@@ -215,7 +218,8 @@ const REQUIRE_ONCHAIN_DEPOSIT_TX =
   String(process.env.REQUIRE_ONCHAIN_DEPOSIT_TX || 'true').toLowerCase() === 'true';
 const ALLOW_WALLET_TX_HASH_FALLBACK =
   String(process.env.ALLOW_WALLET_TX_HASH_FALLBACK || 'true').toLowerCase() === 'true';
-const TX_FEE = String(process.env.TX_FEE || '100000000').trim();
+const TX_FEE = String(process.env.TX_FEE || '200000').trim();
+const SEQUENCER_FEE_MODE = String(process.env.SEQUENCER_FEE_MODE || 'static').trim().toLowerCase();
 const ZEKO_SETTLEMENT_GRAPHQL = isSepoliaGraphqlEndpoint(process.env.ZEKO_SETTLEMENT_GRAPHQL)
   ? process.env.ZEKO_SETTLEMENT_GRAPHQL
   : ZEKO_GRAPHQL;
@@ -785,7 +789,14 @@ function parseRawFeeInt(value) {
 }
 
 async function getSuggestedSequencerFeeRaw() {
-  const fallback = parseRawFeeInt(TX_FEE) || 100000000;
+  const fallback = parseRawFeeInt(TX_FEE) || 200000;
+  if (SEQUENCER_FEE_MODE !== 'dynamic') {
+    return {
+      feeRaw: String(fallback),
+      fee: rawNanoToMinaString(fallback),
+      source: 'configured-static'
+    };
+  }
   try {
     const data = await graphqlRequest(
       `query {
