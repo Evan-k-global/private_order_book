@@ -2359,9 +2359,9 @@
         }
       }
 
-      function clearPendingDeposit(txHash = '') {
+      function clearPendingDeposit(txHash = '', intentId = '') {
         const pending = readPendingDeposit();
-        if (!pending || !txHash || pending.txHash === txHash) {
+        if (!pending || (txHash && pending.txHash === txHash) || (intentId && pending.intentId === intentId)) {
           try { localStorage.removeItem(pendingDepositStorageKey); } catch {}
         }
       }
@@ -2405,11 +2405,14 @@
         });
         const txPayload = toAuroTransactionData(built.transaction);
         const fee = built.fee || '0.0002';
+        const depositIntent = await sdk.createDepositIntent({ wallet, asset, tokenId, amount });
+        const depositIntentId = depositIntent.intentId;
         depositDebugLog('built', {
           asset,
           tokenId,
           amount,
           fee,
+          depositIntentId,
           feeSource: built.feeSource,
           receiverNeedsTokenAccount: built.receiverNeedsTokenAccount,
           transaction: txPayload
@@ -2428,12 +2431,16 @@
               txHash,
               asset,
               tokenId: tokenId || null,
+              intentId: depositIntentId,
               built
             };
           } catch (e) {
             attempts.push(`sendTransaction: ${String(e?.message || e)}`);
             depositDebugLog('wallet-error', { asset, tokenId, error: String(e?.message || e) });
-            throw new Error(`Auro signing or Sepolia submission failed for ${asset}. No automatic retry was sent. Attempts: ${attempts.join(' | ')}`);
+            const error = new Error(`Auro signing or Sepolia submission failed for ${asset}. No automatic retry was sent. Attempts: ${attempts.join(' | ')}`);
+            error.depositIntentId = depositIntentId;
+            error.depositContext = { wallet, asset, tokenId, amount };
+            throw error;
           }
         }
         if (typeof provider.request === 'function') {
@@ -2457,6 +2464,7 @@
                 txHash,
                 asset,
                 tokenId: tokenId || null,
+                intentId: depositIntentId,
                 built
               };
             } catch (e) {
@@ -2465,11 +2473,14 @@
             }
           }
         }
-        throw new Error(
+        const error = new Error(
           `Wallet did not accept the generated deposit transaction for ${asset}. ` +
-          `Use wallet UI to send to ${vaultDepositAddress}, then click Find Latest Eligible Deposit Tx. ` +
+          `No automatic retry was sent. ` +
           `Attempts: ${attempts.join(' | ') || 'none'}`
         );
+        error.depositIntentId = depositIntentId;
+        error.depositContext = { wallet, asset, tokenId, amount };
+        throw error;
       }
 
       function sleep(ms) {
@@ -2484,7 +2495,8 @@
           asset: document.getElementById('noteAsset').value.trim(),
           tokenId,
           amount: Number(document.getElementById('noteAmount').value || 0),
-          txHash: options.txHash || document.getElementById('noteDepositTxHash').value.trim()
+          txHash: options.txHash || document.getElementById('noteDepositTxHash').value.trim(),
+          intentId: options.intentId || ''
         };
         const attempts = Number.isFinite(Number(options.attempts)) ? Number(options.attempts) : 60;
         const delayMs = Number.isFinite(Number(options.delayMs)) ? Number(options.delayMs) : 1500;
@@ -2544,9 +2556,57 @@
         throw lastError || new Error('auto note mint failed');
       }
 
+      async function recoverDepositIntentFromTimeout(intentId, context = {}) {
+        const payload = {
+          intentId,
+          wallet: context.wallet,
+          asset: context.asset,
+          tokenId: context.tokenId || '',
+          amount: Number(context.amount || 0)
+        };
+        rememberPendingDeposit(payload);
+        const attempts = 120;
+        for (let i = 0; i < attempts; i += 1) {
+          try {
+            const result = await sdk.recoverDepositIntent({ intentId });
+            if (result.recovered && result.note?.note) {
+              clearPendingDeposit('', intentId);
+              document.getElementById('noteInput').value = result.note.note;
+              await syncWalletContext(payload.wallet);
+              await refreshNoteAssetOptions();
+              await refreshNotesPortfolio();
+              await refreshPretradeChecklist();
+              if (isActivityAutoRefreshEnabled()) await refreshActivity();
+              return result;
+            }
+            setDepositBusyState(true, 'confirming');
+            setText('vaultOut', {
+              ok: true,
+              pending: true,
+              message: `Waiting for Zeko sequencer confirmation before note mint (${i + 1}/${attempts}). Do not resend this deposit.`,
+              intentId,
+              asset: payload.asset,
+              walletDeltaRaw: result.walletDeltaRaw || '0',
+              vaultDeltaRaw: result.vaultDeltaRaw || '0'
+            });
+          } catch (error) {
+            setText('vaultOut', {
+              ok: true,
+              pending: true,
+              message: `Waiting for Zeko deposit state (${i + 1}/${attempts}). Do not resend this deposit.`,
+              intentId,
+              asset: payload.asset,
+              lastError: error instanceof Error ? error.message : String(error)
+            });
+          }
+          await sleep(i < 20 ? 1500 : 2500);
+        }
+        throw new Error(`Deposit intent ${intentId} is still pending. Refresh later to resume recovery; do not send the funds again.`);
+      }
+
       async function resumePendingDeposit() {
         const pending = readPendingDeposit();
-        if (!pending?.txHash || !pending.wallet || !pending.asset) return;
+        if ((!pending?.txHash && !pending?.intentId) || !pending.wallet || !pending.asset) return;
         const noteWallet = document.getElementById('noteWallet');
         const noteAsset = document.getElementById('noteAsset');
         const noteAmount = document.getElementById('noteAmount');
@@ -2557,7 +2617,24 @@
           noteAsset.value = pending.asset;
         }
         if (Number.isFinite(Number(pending.amount))) noteAmount.value = String(pending.amount);
-        noteTxHash.value = pending.txHash;
+        noteTxHash.value = pending.txHash || '';
+        if (pending.intentId && !pending.txHash) {
+          try {
+            const recovered = await recoverDepositIntentFromTimeout(pending.intentId, pending);
+            rememberLocalActivity(pending.wallet, [
+              makeLocalActivityEvent('note_issued', {
+                asset: pending.asset,
+                amount: recovered?.note?.amount || pending.amount,
+                noteHash: recovered?.note?.note || null,
+                txHash: null
+              })
+            ]);
+            setText('vaultOut', { ok: true, message: 'Deposit recovered and privacy note minted.', note: recovered.note });
+          } catch (error) {
+            setText('vaultOut', String(error));
+          }
+          return;
+        }
         try {
           const portfolio = await sdk.getNotesPortfolio(pending.wallet);
           const existing = Number(portfolio?.outstandingByAsset?.[String(pending.asset).toUpperCase()] || 0);
@@ -2576,6 +2653,7 @@
         try {
           const minted = await autoMintNoteFromLatestDeposit({
             txHash: pending.txHash,
+            intentId: pending.intentId,
             attempts: 60,
             onProgress(progress) {
               setDepositBusyState(true, progress?.phase === 'confirming' ? 'confirming' : 'minting');
@@ -4750,7 +4828,35 @@
                 : `Building ${asset} token deposit transaction. This can take a few seconds on first load.`,
             asset
           });
-          const result = await sendDepositTxWithWallet();
+          let result;
+          try {
+            result = await sendDepositTxWithWallet();
+          } catch (error) {
+            if (!error?.depositIntentId) throw error;
+            const context = error.depositContext || {
+              wallet: document.getElementById('noteWallet').value.trim(),
+              asset,
+              tokenId: document.getElementById('noteAsset').selectedOptions?.[0]?.getAttribute('data-token-id') || '',
+              amount: Number(document.getElementById('noteAmount').value || 0)
+            };
+            const recovered = await recoverDepositIntentFromTimeout(error.depositIntentId, context);
+            rememberLocalActivity(context.wallet, [
+              makeLocalActivityEvent('note_issued', {
+                asset: context.asset,
+                amount: recovered?.note?.amount || context.amount,
+                noteHash: recovered?.note?.note || null,
+                txHash: null
+              })
+            ]);
+            setText('vaultOut', {
+              ok: true,
+              message: 'Deposit confirmed by Zeko and privacy note minted after the wallet timeout.',
+              intentId: error.depositIntentId,
+              note: recovered.note,
+              verificationMode: recovered.verificationMode
+            });
+            return;
+          }
           setDepositBusyState(true, 'confirming');
           if (result.txHash) document.getElementById('noteDepositTxHash').value = result.txHash;
           if (result.txHash) {
@@ -4759,7 +4865,8 @@
               asset,
               tokenId: result.tokenId || '',
               amount: Number(document.getElementById('noteAmount').value || 0),
-              txHash: result.txHash
+              txHash: result.txHash,
+              intentId: result.intentId || ''
             });
           }
           setText('vaultOut', {
@@ -4774,6 +4881,7 @@
           if (result.txHash) {
             const minted = await autoMintNoteFromLatestDeposit({
               txHash: result.txHash,
+              intentId: result.intentId || '',
               onProgress(progress) {
                 setDepositBusyState(true, progress?.phase === 'confirming' ? 'confirming' : 'minting');
                 setText('vaultOut', {
@@ -4806,12 +4914,26 @@
               participantBalances: minted.participantBalances || null
             });
           } else {
+            const recovered = await recoverDepositIntentFromTimeout(result.intentId, {
+              wallet: document.getElementById('noteWallet').value.trim(),
+              asset,
+              tokenId: result.tokenId || '',
+              amount: Number(document.getElementById('noteAmount').value || 0)
+            });
+            rememberLocalActivity(document.getElementById('noteWallet').value.trim(), [
+              makeLocalActivityEvent('note_issued', {
+                asset,
+                amount: recovered?.note?.amount || null,
+                noteHash: recovered?.note?.note || null,
+                txHash: null
+              })
+            ]);
             setText('vaultOut', {
               ok: true,
-              pending: true,
-              message:
-                'Wallet accepted the transfer, but did not return a transaction hash. Do not send it again; use the manual tx-hash recovery controls after the transfer appears on-chain.',
-              asset
+              message: 'Deposit confirmed by Zeko and privacy note minted.',
+              intentId: result.intentId,
+              note: recovered.note,
+              verificationMode: recovered.verificationMode
             });
           }
         } catch (e) {

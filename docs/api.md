@@ -48,11 +48,20 @@ belongs to bridge and rollup settlement assurance, not the user execution path.
 - `POST /api/darkpool/vault/deposit/find-latest`
 - `POST /api/darkpool/vault/deposit/build-transaction`
 - `POST /api/darkpool/vault/deposit/submit-signed`
+- `POST /api/darkpool/vault/deposit-intent`
+- `POST /api/darkpool/vault/deposit-recover`
 - `POST /api/darkpool/vault/deposit-auto`
 - `POST /api/darkpool/vault/withdraw`
 - `GET /api/darkpool/vault/pool`
 - `GET /api/darkpool/notes/status?note=...`
 - `GET /api/darkpool/notes/portfolio?wallet=...`
+
+`deposit-intent` records a short-lived wallet/vault balance snapshot before the wallet signs.
+If Auro times out without returning a transaction hash, the client polls `deposit-recover`.
+Recovery mints exactly once only after Zeko shows the expected wallet decrease and vault increase;
+it does not resend the transfer or require Ethereum finality. This is a sequencer-state recovery
+mechanism, not a substitute for cryptographic transaction lookup when an indexed transaction hash
+is available.
 
 ## Operator APIs
 

@@ -158,6 +158,14 @@
     return this.request('/api/darkpool/vault/deposit/submit-signed', { method: 'POST', body: payload });
   };
 
+  ShadowBookClient.prototype.createDepositIntent = function createDepositIntent(payload) {
+    return this.request('/api/darkpool/vault/deposit-intent', { method: 'POST', body: payload });
+  };
+
+  ShadowBookClient.prototype.recoverDepositIntent = function recoverDepositIntent(payload) {
+    return this.request('/api/darkpool/vault/deposit-recover', { method: 'POST', body: payload });
+  };
+
   ShadowBookClient.prototype.depositAuto = function depositAuto(payload) {
     return this.request('/api/darkpool/vault/deposit-auto', { method: 'POST', body: payload });
   };

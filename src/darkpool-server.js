@@ -77,6 +77,7 @@ const activityEvents = [];
 const frontendFeeLedger = new Map();
 const protocolFeeBalances = {};
 const participantWallets = new Map();
+const depositIntents = new Map();
 const ACTIVITY_PRIVACY_MODE = String(process.env.ACTIVITY_PRIVACY_MODE || 'redacted').trim().toLowerCase();
 const OPERATOR_ACTIVITY_REDACTION_ENABLED = ACTIVITY_PRIVACY_MODE !== 'verbose';
 const WALLET_HASH_SALT = process.env.WALLET_HASH_SALT || 'shadowbook-demo-salt';
@@ -1453,6 +1454,151 @@ async function fetchOnchainTokenBalanceDetailed(wallet, tokenId) {
   };
 }
 
+async function readDepositIntentBalances(intent) {
+  const [walletBalance, vaultBalance] = await Promise.all([
+    fetchOnchainTokenBalanceDetailed(intent.wallet, intent.tokenId),
+    fetchOnchainTokenBalanceDetailed(VAULT_DEPOSIT_ADDRESS, intent.tokenId)
+  ]);
+  if (!walletBalance.ok || !vaultBalance.ok) {
+    const detail = [walletBalance, vaultBalance]
+      .filter((entry) => !entry.ok)
+      .map((entry) => entry.error || 'balance lookup failed')
+      .join(' | ');
+    throw new Error(detail || 'unable to read deposit intent balances');
+  }
+  return {
+    walletRaw: String(walletBalance.total || '0'),
+    vaultRaw: String(vaultBalance.total || '0')
+  };
+}
+
+async function createDepositIntent({ wallet, asset, tokenId, amount }) {
+  if (!VAULT_DEPOSIT_ADDRESS) throw new Error('VAULT_DEPOSIT_ADDRESS is required for deposit recovery');
+  const resolved = resolveKnownAsset({ asset, tokenId });
+  const canonical = canonicalAssetKey(resolved.asset);
+  const decimals = Number.isFinite(ASSET_DECIMALS[canonical]) ? ASSET_DECIMALS[canonical] : 9;
+  const rawAmount = decimalToRawUnitsString(amount, decimals);
+  const before = await readDepositIntentBalances({ wallet, tokenId: resolved.tokenId });
+  const intentId = randomUUID();
+  const intent = {
+    intentId,
+    wallet,
+    asset: canonical,
+    tokenId: resolved.tokenId,
+    amount,
+    rawAmount,
+    beforeWalletRaw: before.walletRaw,
+    beforeVaultRaw: before.vaultRaw,
+    createdAtUnixMs: now(),
+    expiresAtUnixMs: now() + 10 * 60 * 1000,
+    status: 'pending',
+    note: null
+  };
+  depositIntents.set(intentId, intent);
+  queueEngineStatePersist();
+  return {
+    ok: true,
+    intentId,
+    asset: canonical,
+    tokenId: resolved.tokenId,
+    amount,
+    expiresAtUnixMs: intent.expiresAtUnixMs,
+    confirmationModel: 'zeko-sequencer-balance-delta'
+  };
+}
+
+async function recoverDepositIntent(intentId) {
+  const intent = depositIntents.get(intentId);
+  if (!intent) throw new Error('deposit intent not found or expired');
+  if (intent.status === 'claimed' && intent.note) {
+    const accountId = deriveBlindedAccountId({ wallet: intent.wallet });
+    return {
+      ok: true,
+      recovered: true,
+      pending: false,
+      intentId,
+      accountId,
+      note: intent.note,
+      participantBalances: accountBalanceSnapshot(accountId),
+      verificationMode: 'zeko-balance-delta-recovery'
+    };
+  }
+  if (intent.status === 'claiming') {
+    return {
+      ok: true,
+      recovered: false,
+      pending: true,
+      intentId,
+      status: 'claiming',
+      verificationMode: 'zeko-balance-delta-recovery'
+    };
+  }
+  if (Number(intent.expiresAtUnixMs || 0) <= now()) {
+    depositIntents.delete(intentId);
+    queueEngineStatePersist();
+    throw new Error('deposit intent expired; do not resend without checking the vault balance');
+  }
+
+  const current = await readDepositIntentBalances(intent);
+  const beforeWallet = BigInt(intent.beforeWalletRaw);
+  const beforeVault = BigInt(intent.beforeVaultRaw);
+  const currentWallet = BigInt(current.walletRaw);
+  const currentVault = BigInt(current.vaultRaw);
+  const rawAmount = BigInt(intent.rawAmount);
+  const walletDelta = beforeWallet - currentWallet;
+  const vaultDelta = currentVault - beforeVault;
+  const walletMatched = isNativeAsset(intent.asset) ? walletDelta >= rawAmount : walletDelta === rawAmount;
+  const vaultMatched = vaultDelta === rawAmount;
+
+  if (!walletMatched || !vaultMatched) {
+    return {
+      ok: true,
+      recovered: false,
+      pending: true,
+      intentId,
+      status: 'waiting_for_zeko',
+      walletDeltaRaw: walletDelta.toString(),
+      vaultDeltaRaw: vaultDelta.toString(),
+      expectedRawAmount: intent.rawAmount,
+      verificationMode: 'zeko-balance-delta-recovery'
+    };
+  }
+
+  const accountId = deriveBlindedAccountId({ wallet: intent.wallet });
+  intent.status = 'claiming';
+  queueEngineStatePersist();
+  let note;
+  try {
+    await syncParticipantFromOnchain(accountId, intent.wallet);
+    note = issueNote(intent.asset, intent.amount, 'onchain-backed-deposit-recovered', null, accountId);
+    if (!note) throw new Error('unable to issue recovered deposit note');
+    intent.status = 'claimed';
+    intent.claimedAtUnixMs = now();
+    intent.note = note;
+    intent.walletAfterRaw = current.walletRaw;
+    intent.vaultAfterRaw = current.vaultRaw;
+    queueEngineStatePersist();
+  } catch (error) {
+    intent.status = 'pending';
+    queueEngineStatePersist();
+    throw error;
+  }
+  return {
+    ok: true,
+    recovered: true,
+    pending: false,
+    intentId,
+    accountId,
+    note,
+    asset: intent.asset,
+    tokenId: intent.tokenId,
+    verifiedDepositTx: null,
+    verificationMode: 'zeko-balance-delta-recovery',
+    participantBalances: accountBalanceSnapshot(accountId),
+    poolTotals
+  };
+}
+
 function hasOpenOrdersForAccount(accountId) {
   return Array.from(orders.values()).some(
     (o) =>
@@ -2330,6 +2476,7 @@ function engineStateSnapshot() {
     privateStateJournal,
     nextOrderSequenceNumber,
     poolTotals,
+    depositIntents: Object.fromEntries(depositIntents.entries()),
     usedDepositTxHashes: Array.from(usedDepositTxHashes.values()),
     usedSettlementPayoutTxHashes: Array.from(usedSettlementPayoutTxHashes.values())
   };
@@ -2362,6 +2509,7 @@ async function loadEngineState() {
     const loadedSpentNullifiers = Array.isArray(state.spentNullifiers) ? state.spentNullifiers : [];
     const loadedSequencingReceipts = Array.isArray(state.sequencingReceipts) ? state.sequencingReceipts : [];
     const loadedPrivateStateJournal = Array.isArray(state.privateStateJournal) ? state.privateStateJournal : [];
+    const loadedDepositIntents = state.depositIntents && typeof state.depositIntents === 'object' ? state.depositIntents : {};
     const loadedUsedDepositTxHashes = Array.isArray(state.usedDepositTxHashes) ? state.usedDepositTxHashes : [];
     const loadedUsedSettlementPayoutTxHashes = Array.isArray(state.usedSettlementPayoutTxHashes)
       ? state.usedSettlementPayoutTxHashes
@@ -2403,6 +2551,11 @@ async function loadEngineState() {
     for (const entry of loadedPrivateStateJournal) {
       if (!entry || typeof entry !== 'object' || typeof entry.kind !== 'string') continue;
       privateStateJournal.push(entry);
+    }
+    depositIntents.clear();
+    for (const [intentId, intent] of Object.entries(loadedDepositIntents)) {
+      if (!intent || typeof intent !== 'object' || typeof intentId !== 'string') continue;
+      if (Number(intent.expiresAtUnixMs || 0) > now()) depositIntents.set(intentId, intent);
     }
     const loadedNextOrderSequenceNumber = Number(state.nextOrderSequenceNumber || 0);
     if (Number.isFinite(loadedNextOrderSequenceNumber) && loadedNextOrderSequenceNumber > 0) {
@@ -5425,6 +5578,23 @@ async function main() {
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/vault/deposit-intent') {
+        const body = await readJsonBody(req);
+        const wallet = requireString(body.wallet, 'wallet');
+        const asset = requireString(body.asset, 'asset');
+        const tokenId = requireString(body.tokenId, 'tokenId');
+        const amount = requirePositiveNumber(body.amount, 'amount');
+        writeJson(res, 200, await createDepositIntent({ wallet, asset, tokenId, amount }));
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/vault/deposit-recover') {
+        const body = await readJsonBody(req);
+        const intentId = requireString(body.intentId, 'intentId');
+        writeJson(res, 200, await recoverDepositIntent(intentId));
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/darkpool/vault/deposit-auto') {
         const body = await readJsonBody(req);
         const accountId = deriveBlindedAccountId(body);
@@ -5462,6 +5632,15 @@ async function main() {
         }
         const canonical = canonicalAssetKey(resolved.asset);
         const note = issueNote(canonical, amount, 'onchain-backed-deposit', null, accountId);
+        const intentId = typeof body.intentId === 'string' ? body.intentId.trim() : '';
+        if (intentId) {
+          const intent = depositIntents.get(intentId);
+          if (intent && intent.status === 'pending') {
+            intent.status = 'claimed';
+            intent.claimedAtUnixMs = now();
+            intent.note = note;
+          }
+        }
         queueEngineStatePersist();
         writeJson(res, 200, {
           ok: true,
