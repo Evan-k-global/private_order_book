@@ -2103,7 +2103,9 @@
           hint.textContent = '';
           return;
         }
-        hint.textContent = `Book click ready: press ${recommendedBookActionSide === 'BUY' ? 'Buy' : 'Sell'} to trade against that displayed level with a LIMIT order.`;
+        const orderType = document.getElementById('ordType')?.value || 'LIMIT';
+        const executionLabel = orderType === 'MARKET' ? 'MARKET IOC order' : 'LIMIT order';
+        hint.textContent = `Book click ready: press ${recommendedBookActionSide === 'BUY' ? 'Buy' : 'Sell'} to trade against that displayed level with a ${executionLabel}.`;
       }
 
       function getConnectedWalletValue() {
@@ -2899,7 +2901,7 @@
             : 'Public anonymous orders show price and size in the book, but do not expose your wallet. ') +
           'Orders are note-collateralized only. ' +
           (orderType === 'MARKET'
-            ? 'Market orders are IOC and execute against standing liquidity.'
+            ? 'Market orders are IOC and execute against standing liquidity. Auro signs the order authorization; matched fills are queued for on-chain settlement.'
             : 'Limit orders lock collateral until filled, canceled, or expired.');
       }
 
@@ -2922,6 +2924,12 @@
         }
         if (msg.includes('no opposite liquidity')) {
           return 'No opposite liquidity available for market execution right now.';
+        }
+        if (msg.includes('no ask liquidity for market buy')) {
+          return 'This market BUY cannot execute: the selected market has no resting asks. Refresh the book and try again.';
+        }
+        if (msg.includes('no bid liquidity for market sell')) {
+          return 'This market SELL cannot execute: the selected market has no resting bids. Refresh the book and try again.';
         }
         return msg;
       }
@@ -4543,6 +4551,13 @@
           quantity,
           limitPrice: orderType === 'MARKET' ? null : Number(limitPrice)
         });
+        if (orderType === 'MARKET' && !pretrade.marketExecutable) {
+          throw new Error(
+            side === 'BUY'
+              ? 'no ask liquidity for market buy'
+              : 'no bid liquidity for market sell'
+          );
+        }
         const required = pretrade.required || {};
         const requiredAsset = required.asset;
         const requiredAmount = Number(required.amount || 0);
@@ -4730,8 +4745,14 @@
         }
       };
       document.getElementById('ordType').onchange = () => {
-        updateBookPrefillActionUi('');
+        // A book-selected counter-side remains valid when changing LIMIT to MARKET.
+        // Market orders are always fresh IOC orders, never replacements.
+        const selectedBookSide = recommendedBookActionSide;
+        if (document.getElementById('ordType').value === 'MARKET') {
+          clearReplaceOrderState();
+        }
         updateOrderTypeUi();
+        updateBookPrefillActionUi(selectedBookSide);
       };
       document.getElementById('ordVisibility').onchange = () => {
         updateBookPrefillActionUi('');
