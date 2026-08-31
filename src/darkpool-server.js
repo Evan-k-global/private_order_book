@@ -5246,6 +5246,7 @@ async function main() {
         const replace = Boolean(body.replace);
         const tif = normalizeTif(body.timeInForce);
         const frontendId = normalizeFrontendId(body.frontendId);
+        const visibility = String(body.visibility || 'public').trim().toLowerCase() === 'private' ? 'private' : 'public';
         const makerTag = typeof body.makerTag === 'string' ? body.makerTag.trim().slice(0, 60) : 'maker-quote';
         if (bidPrice >= askPrice) throw new Error('bidPrice must be less than askPrice');
 
@@ -5265,6 +5266,7 @@ async function main() {
           limitPrice: bidPrice,
           quantity: bidSize,
           timeInForce: tif,
+          visibility,
           privateMemo: `maker-bid:${makerTag}`,
           frontendId
         });
@@ -5279,6 +5281,7 @@ async function main() {
           limitPrice: askPrice,
           quantity: askSize,
           timeInForce: tif,
+          visibility,
           privateMemo: `maker-ask:${makerTag}`,
           frontendId
         });
@@ -5294,7 +5297,7 @@ async function main() {
           pair: pairConfig.symbol,
           replace,
           canceledOrders: canceled,
-          quote: { bidPrice, askPrice, bidSize, askSize, tif, makerTag },
+          quote: { bidPrice, askPrice, bidSize, askSize, tif, makerTag, visibility },
           bidOrder: sanitizeOrder(bid),
           askOrder: sanitizeOrder(ask),
           sequencingReceipts: {
