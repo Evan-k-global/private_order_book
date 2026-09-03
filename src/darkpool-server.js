@@ -899,6 +899,8 @@ async function buildVaultDepositTransaction({ wallet, tokenId, amount, memo, fee
   Mina.setActiveInstance(network);
   await fetchAccount({ publicKey: sender });
   if (nativeAsset) {
+    const recipientAccount = await fetchAccount({ publicKey: recipient });
+    const recipientNeedsAccount = !recipientAccount?.account;
     const tx = await Mina.transaction(
       {
         sender,
@@ -906,6 +908,9 @@ async function buildVaultDepositTransaction({ wallet, tokenId, amount, memo, fee
         memo
       },
       async () => {
+        if (recipientNeedsAccount) {
+          AccountUpdate.fundNewAccount(sender, 1);
+        }
         const payer = AccountUpdate.createSigned(sender);
         payer.send({ to: recipient, amount: UInt64.from(requireString(amount, 'amount')) });
       }
@@ -920,6 +925,7 @@ async function buildVaultDepositTransaction({ wallet, tokenId, amount, memo, fee
     await tx.prove();
     return {
       transaction: tx.toJSON(),
+      receiverNeedsAccount: recipientNeedsAccount,
       receiverNeedsTokenAccount: false,
       nativeAsset: true
     };
@@ -5590,6 +5596,7 @@ async function main() {
           fee: suggestedFee.fee,
           feeRaw: suggestedFee.feeRaw,
           feeSource: suggestedFee.source,
+          receiverNeedsAccount: Boolean(built?.receiverNeedsAccount),
           receiverNeedsTokenAccount: Boolean(built?.receiverNeedsTokenAccount),
           memo,
           transaction: built.transaction
