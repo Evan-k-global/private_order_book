@@ -5039,14 +5039,18 @@ async function main() {
         const quantity = requirePositiveNumber(Number(url.searchParams.get('quantity') || '0'), 'quantity');
         let limitPrice = Number(url.searchParams.get('limitPrice') || '0');
         let marketExecutable = true;
+        let marketAvailableQuantity = null;
+        let marketFullFillAvailable = null;
         if (orderType === 'MARKET') {
           const sweep = marketSweepQuote(market.symbol, side, quantity);
+          marketAvailableQuantity = sweep.availableQty;
+          marketFullFillAvailable = sweep.fullFillAvailable;
           const slip = Math.max(0, Number(MARKET_ORDER_SLIPPAGE_BPS || 0)) / 10000;
           if (side === 'BUY') {
-            if (!Number.isFinite(Number(sweep.terminalPrice)) || Number(sweep.terminalPrice) <= 0) marketExecutable = false;
+            if (!Number.isFinite(Number(sweep.terminalPrice)) || Number(sweep.terminalPrice) <= 0 || !sweep.fullFillAvailable) marketExecutable = false;
             else limitPrice = Number(sweep.terminalPrice) * (1 + slip);
           } else {
-            if (!Number.isFinite(Number(sweep.terminalPrice)) || Number(sweep.terminalPrice) <= 0) marketExecutable = false;
+            if (!Number.isFinite(Number(sweep.terminalPrice)) || Number(sweep.terminalPrice) <= 0 || !sweep.fullFillAvailable) marketExecutable = false;
             else limitPrice = Math.max(0.00000001, Number(sweep.terminalPrice) * (1 - slip));
           }
         } else {
@@ -5079,6 +5083,8 @@ async function main() {
           onchainSyncTtlMs: ONCHAIN_SYNC_TTL_MS,
           orderType,
           marketExecutable,
+          marketAvailableQuantity,
+          marketFullFillAvailable,
           side,
           quantity,
           limitPrice: Number.isFinite(limitPrice) ? limitPrice : null,
@@ -5123,6 +5129,11 @@ async function main() {
           sortBook(pairConfig.symbol);
           const sweep = marketSweepQuote(pairConfig.symbol, side, quantity);
           const slip = Math.max(0, Number(MARKET_ORDER_SLIPPAGE_BPS || 0)) / 10000;
+          if (!sweep.fullFillAvailable) {
+            throw new Error(
+              `market order quantity ${quantity} exceeds available ${side === 'BUY' ? 'ask' : 'bid'} liquidity ${sweep.availableQty}`
+            );
+          }
           if (side === 'BUY') {
             if (!Number.isFinite(Number(sweep.terminalPrice)) || Number(sweep.terminalPrice) <= 0) {
               throw new Error('no ask liquidity for market buy');
