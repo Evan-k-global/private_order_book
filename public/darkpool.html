@@ -1811,7 +1811,7 @@
                 <label>Asset</label>
                 <select id="noteAsset">
                   <option value="sETH" data-token-id="wSHV2S4qX9jFsLjQo8r1BsMLH2ZRKsZx6EJd1sbozGPieEC4Jf">sETH (0.00)</option>
-                  <option value="sZEKO" data-token-id="xpAptwG79jEStACsCv9C6yXUBmKbvurUo8GsTPYapn9QWB5zE5">sZEKO (0.00)</option>
+                  <option value="sZEKO" data-token-id="wTJjLAZ3BadNjLyLk3hw6C4oCwMd8rqsq6Mmck5gdd3Gn7UPPL">sZEKO (0.00)</option>
                 </select>
               </div>
               <div><label>Amount</label><input id="noteAmount" type="number" value="1" /></div>
@@ -2235,7 +2235,7 @@
           },
           {
             asset: 'sZEKO',
-            tokenId: 'xpAptwG79jEStACsCv9C6yXUBmKbvurUo8GsTPYapn9QWB5zE5'
+            tokenId: 'wTJjLAZ3BadNjLyLk3hw6C4oCwMd8rqsq6Mmck5gdd3Gn7UPPL'
           }
         ];
       }
@@ -2852,7 +2852,7 @@
           await refreshWithdrawPanel();
         } catch (error) {
           latestNotesPortfolio = null;
-          setText('notesPortfolioOut', String(error));
+          setText('notesPortfolioOut', formatFundingError(error));
           await refreshWithdrawPanel();
         }
       }
@@ -3399,6 +3399,17 @@
         if (action === 'sync') return 'Connect your wallet and sync/fund your account to view balances.';
         if (action === 'notes') return 'Connect your wallet and sync/fund your account to view private collateral.';
         return 'Connect your wallet and sync/fund your account before trading.';
+      }
+
+      function formatFundingError(error) {
+        const message = String(error || '');
+        if (/graphql http (502|503|504|520)|returned non-json/i.test(message)) {
+          return 'Zeko Sepolia balance service is temporarily unavailable, so wallet balances cannot be refreshed. Your stored notes were not changed. Retry Sync On-Chain Balance when the endpoint is back.';
+        }
+        if (/unable to fetch on-chain balance/i.test(message)) {
+          return 'Zeko Sepolia did not return a wallet balance. Your stored notes were not changed. Retry Sync On-Chain Balance.';
+        }
+        return message;
       }
 
       async function syncFundingWalletFromInput() {
@@ -4405,6 +4416,10 @@
           return;
         }
         const wallet = syncActivityWalletFromOrder(false);
+        if (!wallet || isDemoWalletPlaceholder(wallet)) {
+          renderActivity([], []);
+          return;
+        }
         const limit = Math.max(1, Number(document.getElementById('activityLimit').value || 150));
         const data = await sdk.getActivity(wallet, limit);
         renderActivity(mergeActivityWithLocal(wallet, data.events || []), data.openOrders || []);
@@ -4797,11 +4812,11 @@
         const el = document.getElementById(id);
         if (!el) continue;
         el.oninput = () => mirrorFundingWalletDraft(id);
-        el.onchange = () => syncFundingWalletFromInput().catch((error) => setText('notesPortfolioOut', String(error)));
+        el.onchange = () => syncFundingWalletFromInput().catch((error) => setText('notesPortfolioOut', formatFundingError(error)));
         el.onkeydown = (event) => {
           if (event.key === 'Enter') {
             event.preventDefault();
-            syncFundingWalletFromInput().catch((error) => setText('notesPortfolioOut', String(error)));
+            syncFundingWalletFromInput().catch((error) => setText('notesPortfolioOut', formatFundingError(error)));
           }
         };
       }
@@ -4867,7 +4882,7 @@
       document.getElementById('syncBtn').onclick = async () => {
         try {
           await syncFundingWalletFromInput();
-        } catch (e) { setText('notesPortfolioOut', String(e)); }
+        } catch (e) { setText('notesPortfolioOut', formatFundingError(e)); }
       };
 
       document.getElementById('mintNoteBtn').onclick = async () => {
