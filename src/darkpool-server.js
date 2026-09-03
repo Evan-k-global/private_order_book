@@ -963,6 +963,61 @@ async function buildVaultDepositTransaction({ wallet, tokenId, amount, memo, fee
   };
 }
 
+async function buildTokenTransferTransaction({ wallet, recipient, tokenId, amount, memo, feeRaw }) {
+  if (!ZEKO_GRAPHQL) throw new Error('ZEKO_GRAPHQL is required');
+  const { Mina, PublicKey, UInt64, UInt32, Bool, AccountUpdate, fetchAccount } = await import('o1js');
+  const { FungibleToken } = await import('mina-fungible-token');
+  const sender = PublicKey.fromBase58(requireString(wallet, 'wallet'));
+  const receiver = PublicKey.fromBase58(requireString(recipient, 'recipient'));
+  if (sender.toBase58() === receiver.toBase58()) throw new Error('recipient must differ from sender');
+  const assetConfig = resolveKnownAsset({ tokenId });
+  const assetKey = canonicalAssetKey(assetConfig.asset);
+  if (isNativeAsset(assetConfig)) throw new Error('token transfer widget only supports fungible tokens');
+  const tokenAddress58 = TOKEN_CONTRACT_ADDRESSES[assetKey];
+  if (!tokenAddress58) throw new Error(`missing token contract address for ${assetKey}`);
+  const network = Mina.Network({
+    networkId: ZEKO_NETWORK_ID,
+    mina: ZEKO_GRAPHQL,
+    archive: ZEKO_ARCHIVE_GRAPHQL || ZEKO_GRAPHQL
+  });
+  Mina.setActiveInstance(network);
+  await fetchAccount({ publicKey: sender });
+  if (!(await doesOnchainTokenAccountExist(sender.toBase58(), assetConfig.tokenId))) {
+    throw new Error(`sender has no ${assetConfig.asset} token account`);
+  }
+  const tokenAddress = PublicKey.fromBase58(tokenAddress58);
+  const token = new FungibleToken(tokenAddress);
+  if (!fungibleTokenCompilePromise) fungibleTokenCompilePromise = FungibleToken.compile();
+  await fungibleTokenCompilePromise;
+  const recipientNeedsTokenAccount = !(await doesOnchainTokenAccountExist(receiver.toBase58(), assetConfig.tokenId));
+  const tx = await Mina.transaction(
+    {
+      sender,
+      fee: UInt64.from(requireString(feeRaw || TX_FEE, 'feeRaw')),
+      memo
+    },
+    async () => {
+      if (recipientNeedsTokenAccount) {
+        AccountUpdate.fundNewAccount(sender, 1);
+      }
+      await token.transfer(sender, receiver, UInt64.from(requireString(amount, 'amount')));
+    }
+  );
+  const feePayerUpdate = tx.feePayer;
+  if (feePayerUpdate?.body?.preconditions?.account?.nonce) {
+    feePayerUpdate.body.preconditions.account.nonce = { isSome: Bool(false), value: UInt32.from(0) };
+  }
+  if (feePayerUpdate?.body) {
+    feePayerUpdate.body.useFullCommitment = Bool(true);
+  }
+  await tx.prove();
+  return {
+    transaction: tx.toJSON(),
+    receiverNeedsTokenAccount: recipientNeedsTokenAccount,
+    nativeAsset: false
+  };
+}
+
 function getDefaultPairSymbol() {
   return Array.from(pairs.values())[0]?.symbol || DEFAULT_MARKET_DEFINITIONS[0]?.symbol || '';
 }
@@ -5615,7 +5670,71 @@ async function main() {
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/funding/token-transfer/build-transaction') {
+        const body = await readJsonBody(req);
+        const resolved = resolveKnownAsset({ asset: body.asset, tokenId: body.tokenId });
+        if (canonicalAssetKey(resolved.asset) !== 'SZEKO') {
+          throw new Error('token transfer widget currently supports sZEKO only');
+        }
+        const wallet = requireString(body.wallet, 'wallet');
+        const recipient = requireString(body.recipient, 'recipient');
+        const amount = requirePositiveNumber(body.amount, 'amount');
+        const rawAmount = decimalToRawUnitsString(amount, ASSET_DECIMALS[canonicalAssetKey(resolved.asset)] ?? 9);
+        const suggestedFee = await getSuggestedSequencerFeeRaw();
+        const memo =
+          typeof body.memo === 'string' && body.memo.trim()
+            ? body.memo.trim()
+            : `shadowbook-transfer:${resolved.asset}`;
+        const built = await buildTokenTransferTransaction({
+          wallet,
+          recipient,
+          tokenId: resolved.tokenId,
+          amount: rawAmount,
+          memo,
+          feeRaw: suggestedFee.feeRaw
+        });
+        writeJson(res, 200, {
+          ok: true,
+          wallet,
+          recipient,
+          asset: resolved.asset,
+          tokenId: resolved.tokenId,
+          amount,
+          rawAmount,
+          fee: suggestedFee.fee,
+          feeRaw: suggestedFee.feeRaw,
+          feeSource: suggestedFee.source,
+          receiverNeedsTokenAccount: Boolean(built?.receiverNeedsTokenAccount),
+          memo,
+          transaction: built.transaction
+        });
+        return;
+      }
+
       if (req.method === 'POST' && url.pathname === '/api/darkpool/vault/deposit/submit-signed') {
+        const body = await readJsonBody(req);
+        const signedData = body?.signedData ?? body?.signature ?? body?.response?.signedData ?? null;
+        const parsed = signedData ? (typeof signedData === 'string' ? JSON.parse(signedData) : signedData) : null;
+        const zkappCommand =
+          body?.zkappCommand ||
+          parsed?.zkappCommand ||
+          parsed?.data?.zkappCommand ||
+          parsed?.signedData?.zkappCommand ||
+          null;
+        if (!zkappCommand || typeof zkappCommand !== 'object') {
+          throw new Error('submit-signed requires zkappCommand or signedData containing zkappCommand');
+        }
+        validateSignedZkappCommandCoverage(zkappCommand);
+        const submitted = await submitSignedZkappCommand(zkappCommand);
+        writeJson(res, 200, {
+          ok: true,
+          hash: submitted.hash,
+          zkappId: submitted.id
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/funding/token-transfer/submit-signed') {
         const body = await readJsonBody(req);
         const signedData = body?.signedData ?? body?.signature ?? body?.response?.signedData ?? null;
         const parsed = signedData ? (typeof signedData === 'string' ? JSON.parse(signedData) : signedData) : null;

@@ -154,8 +154,16 @@
     return this.request('/api/darkpool/vault/deposit/build-transaction', { method: 'POST', body: payload });
   };
 
+  ShadowBookClient.prototype.buildTokenTransferTransaction = function buildTokenTransferTransaction(payload) {
+    return this.request('/api/darkpool/funding/token-transfer/build-transaction', { method: 'POST', body: payload });
+  };
+
   ShadowBookClient.prototype.submitSignedDepositTransaction = function submitSignedDepositTransaction(payload) {
     return this.request('/api/darkpool/vault/deposit/submit-signed', { method: 'POST', body: payload });
+  };
+
+  ShadowBookClient.prototype.submitSignedTokenTransferTransaction = function submitSignedTokenTransferTransaction(payload) {
+    return this.request('/api/darkpool/funding/token-transfer/submit-signed', { method: 'POST', body: payload });
   };
 
   ShadowBookClient.prototype.createDepositIntent = function createDepositIntent(payload) {

@@ -1884,6 +1884,31 @@
             <pre id="vaultOut"></pre>
           </div>
         </section>
+
+        <section class="card vault-zone funding-transfer">
+          <div class="hd"><h2>Transfer sZEKO</h2></div>
+          <div class="bd stack">
+            <div class="footnote">
+              Build the sZEKO transfer before Auro signs it. ShadowBook adds the recipient token account when needed; this does not mint notes or change vault collateral.
+            </div>
+            <div class="grid2">
+              <div>
+                <label>Recipient wallet</label>
+                <input id="tokenTransferRecipient" placeholder="B62..." autocomplete="off" />
+              </div>
+              <div>
+                <label>Amount sZEKO</label>
+                <input id="tokenTransferAmount" type="number" min="0.000000001" step="any" placeholder="0" />
+              </div>
+            </div>
+            <div id="tokenTransferHint" class="hint-box">Source wallet: connect Auro or enter a wallet in On-Chain Funding.</div>
+            <div class="grid2">
+              <button id="buildTokenTransferBtn" class="ghost">Build Transfer</button>
+              <button id="signTokenTransferBtn" class="txn" disabled>Sign in Auro</button>
+            </div>
+            <pre id="tokenTransferOut"></pre>
+          </div>
+        </section>
       </div>
     </div>
 
@@ -1923,6 +1948,7 @@
       let activeAuroWallet = '';
       let autoAuroSyncInFlight = false;
       let activeDepositIntentId = '';
+      let pendingTokenTransfer = null;
       const sepoliaWalletNetwork = {
         key: 'zekoEthereumSepolia',
         label: 'Zeko Ethereum Sepolia',
@@ -2564,6 +2590,109 @@
         error.depositIntentId = depositIntentId;
         error.depositContext = { wallet, asset, tokenId, amount };
         throw error;
+      }
+
+      function resetPendingTokenTransfer() {
+        pendingTokenTransfer = null;
+        const signBtn = document.getElementById('signTokenTransferBtn');
+        if (signBtn) signBtn.disabled = true;
+      }
+
+      function getTokenTransferSourceWallet() {
+        return (
+          document.getElementById('chainWallet')?.value?.trim() ||
+          document.getElementById('noteWallet')?.value?.trim() ||
+          activeAuroWallet
+        );
+      }
+
+      async function buildTokenTransferForAuro() {
+        const wallet = getTokenTransferSourceWallet();
+        const recipient = document.getElementById('tokenTransferRecipient').value.trim();
+        const amount = Number(document.getElementById('tokenTransferAmount').value || 0);
+        if (!wallet) throw new Error('Source wallet is required. Connect Auro or enter a wallet in On-Chain Funding.');
+        if (!recipient) throw new Error('Recipient wallet is required');
+        if (!Number.isFinite(amount) || amount <= 0) throw new Error('Amount must be positive');
+        resetPendingTokenTransfer();
+        setText('tokenTransferOut', {
+          ok: true,
+          pending: true,
+          message: 'Building and proving the sZEKO transfer. Auro will not open until this finishes.'
+        });
+        const built = await sdk.buildTokenTransferTransaction({
+          wallet,
+          recipient,
+          asset: 'sZEKO',
+          amount,
+          memo: 'shadowbook-transfer:sZEKO'
+        });
+        pendingTokenTransfer = { wallet, recipient, amount, built };
+        document.getElementById('signTokenTransferBtn').disabled = false;
+        setText('tokenTransferOut', {
+          ok: true,
+          stage: 'built',
+          message: 'Transfer is built and proved. Review it, then click Sign in Auro.',
+          wallet,
+          recipient,
+          asset: built.asset,
+          amount: built.amount,
+          fee: built.fee,
+          feeSource: built.feeSource,
+          receiverNeedsTokenAccount: built.receiverNeedsTokenAccount,
+          memo: built.memo
+        });
+      }
+
+      async function signBuiltTokenTransferWithAuro() {
+        const provider = window.mina;
+        if (!provider) throw new Error('No Auro wallet provider found in browser');
+        if (!pendingTokenTransfer?.built?.transaction) throw new Error('Build the transfer before signing');
+        const { wallet, built } = pendingTokenTransfer;
+        const txPayload = toAuroTransactionData(built.transaction);
+        const walletFee = Number(built.fee || '0.0002');
+        if (!Number.isFinite(walletFee) || walletFee <= 0) throw new Error(`invalid wallet fee ${built.fee}`);
+        const attempts = [];
+
+        const signAndSubmit = async (response, method) => {
+          const directHash = extractWalletTxHash(response) || response?.hash || '';
+          if (directHash) return { method, txHash: directHash };
+          const zkappCommand = extractSignedZkappCommand(response, wallet);
+          const submitted = await sdk.submitSignedTokenTransferTransaction({ zkappCommand });
+          return {
+            method: `${method}:onlySign+serverSubmit`,
+            txHash: extractWalletTxHash(submitted) || submitted?.hash || '',
+            submitted
+          };
+        };
+
+        if (typeof provider.sendTransaction === 'function') {
+          try {
+            const response = await provider.sendTransaction({
+              onlySign: true,
+              transaction: txPayload,
+              feePayer: { fee: walletFee }
+            });
+            return signAndSubmit(response, 'sendTransaction');
+          } catch (error) {
+            attempts.push(`sendTransaction: ${String(error?.message || error)}`);
+          }
+        }
+        if (typeof provider.request === 'function') {
+          try {
+            const response = await provider.request({
+              method: 'mina_sendTransaction',
+              params: {
+                onlySign: true,
+                transaction: txPayload,
+                feePayer: { fee: walletFee }
+              }
+            });
+            return signAndSubmit(response, 'mina_sendTransaction');
+          } catch (error) {
+            attempts.push(`mina_sendTransaction: ${String(error?.message || error)}`);
+          }
+        }
+        throw new Error(`Auro did not accept the prebuilt sZEKO transfer. No automatic retry was sent. Attempts: ${attempts.join(' | ') || 'none'}`);
       }
 
       function sleep(ms) {
@@ -4931,6 +5060,43 @@
         try {
           await syncFundingWalletFromInput();
         } catch (e) { setText('notesPortfolioOut', formatFundingError(e)); }
+      };
+
+      for (const id of ['tokenTransferRecipient', 'tokenTransferAmount']) {
+        document.getElementById(id)?.addEventListener('input', resetPendingTokenTransfer);
+      }
+      document.getElementById('buildTokenTransferBtn').onclick = async () => {
+        const button = document.getElementById('buildTokenTransferBtn');
+        try {
+          button.disabled = true;
+          await buildTokenTransferForAuro();
+        } catch (e) {
+          setText('tokenTransferOut', String(e));
+        } finally {
+          button.disabled = false;
+        }
+      };
+      document.getElementById('signTokenTransferBtn').onclick = async () => {
+        const button = document.getElementById('signTokenTransferBtn');
+        try {
+          button.disabled = true;
+          setText('tokenTransferOut', {
+            ok: true,
+            pending: true,
+            message: 'Opening the prebuilt sZEKO transfer in Auro for signature.'
+          });
+          const result = await signBuiltTokenTransferWithAuro();
+          setText('tokenTransferOut', {
+            ok: true,
+            submitted: true,
+            message: 'sZEKO transfer submitted to Zeko.',
+            ...result
+          });
+          resetPendingTokenTransfer();
+        } catch (e) {
+          setText('tokenTransferOut', String(e));
+          button.disabled = false;
+        }
       };
 
       document.getElementById('mintNoteBtn').onclick = async () => {
