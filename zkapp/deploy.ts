@@ -149,7 +149,9 @@ function pinAccountUpdateNonce(tx: any, accountPublicKey: PublicKey, nonce: bigi
 async function main() {
   const graphql = requireEnv('ZEKO_GRAPHQL');
   if (!graphql.includes('sepolia.zeko.io')) throw new Error('ZEKO_GRAPHQL must point to Zeko Ethereum Sepolia');
-  const networkId = 'zeko';
+  // Sepolia's o1js/Auro signing domain is `testnet`; keep this configurable
+  // so deployment can target another Zeko network without changing code.
+  const networkId = readOptionalEnv('ZEKO_O1JS_NETWORK_ID', 'testnet');
   const txFee = UInt64.from(readOptionalEnv('TX_FEE', '2000000000'));
   const useAdvanced = readOptionalEnv('ZKAPP_DEPLOY_USE_ADVANCED', 'false').toLowerCase() === 'true';
   const marketSymbol = readOptionalEnv('MARKET_SYMBOL', 'sETH/sZEKO');
