@@ -1559,11 +1559,11 @@
               <div id="chartHeroPrice" class="value mono">-</div>
             </div>
             <div class="chart-top-stat">
-              <label>24h Change</label>
+              <label id="chartHeroChangeLabel">Window Change</label>
               <div id="chartHeroChange" class="value mono">-</div>
             </div>
             <div class="chart-top-stat">
-              <label>24h Volume</label>
+              <label id="chartHeroVolumeLabel">Window Volume</label>
               <div id="chartHeroVolume" class="value mono">-</div>
             </div>
             <div class="chart-top-stat">
@@ -2194,7 +2194,11 @@
         const n = Number(value);
         if (!Number.isFinite(n)) return '-';
         if (Math.abs(n - Math.trunc(n)) < 1e-9) return n.toFixed(2);
-        return n.toFixed(4);
+        const fixed = n.toFixed(4);
+        if (n !== 0 && Number(fixed) === 0) {
+          return n.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+        }
+        return fixed;
       }
 
       function fmtUtcTime(value) {
@@ -4005,6 +4009,13 @@
         const change = lastPrice > 0 && firstPrice > 0 ? lastPrice - firstPrice : 0;
         const changePct = lastPrice > 0 && firstPrice > 0 ? (change / firstPrice) * 100 : 0;
         const volume = rows.reduce((sum, row) => sum + Number(row.volume || 0), 0);
+        const intervalSec = Math.max(1, Number(document.getElementById('chartInterval')?.value || 60));
+        const visibleSpanSec = first && last ? Math.max(0, Number(last.time || 0) - Number(first.time || 0)) + intervalSec : 0;
+        const hasFullDay = visibleSpanSec >= 24 * 60 * 60;
+        const changeLabel = document.getElementById('chartHeroChangeLabel');
+        const volumeLabel = document.getElementById('chartHeroVolumeLabel');
+        if (changeLabel) changeLabel.textContent = hasFullDay ? '24h Change' : 'Window Change';
+        if (volumeLabel) volumeLabel.textContent = hasFullDay ? '24h Volume' : 'Window Volume';
         const lastTrade = Array.isArray(trades) && trades.length ? trades[0] : null;
         document.getElementById('chartHeroVenue').textContent = market?.marketId
           ? `${market.marketId} · Last print ${lastTrade?.createdAtUnixMs ? fmtUtcTime(lastTrade.createdAtUnixMs) : 'UTC pending'}`
