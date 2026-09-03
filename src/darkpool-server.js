@@ -4378,6 +4378,9 @@ async function bootstrapMarkets() {
   marketsByTokenKey.clear();
   const configuredMarkets = parseSupportedAssetPairs(process.env.SUPPORTED_ASSET_PAIRS_JSON || '');
   const sourceMarkets = configuredMarkets || DEFAULT_MARKET_DEFINITIONS;
+  const configuredSzekoTokenId = TOKEN_CONTRACT_ADDRESSES.SZEKO
+    ? await deriveTokenIdFromAddress(TOKEN_CONTRACT_ADDRESSES.SZEKO)
+    : DEFAULT_SZEKO_TOKEN_ID;
   for (const rawMarket of sourceMarkets) {
     const market = { ...rawMarket };
     const baseAssetKey = canonicalAssetKey(market.baseAsset);
@@ -4394,8 +4397,8 @@ async function bootstrapMarkets() {
     if (!market.quoteTokenId) {
       throw new Error(`missing quoteTokenId for ${market.symbol}; set SUPPORTED_ASSET_PAIRS_JSON or token address for ${market.quoteAsset}`);
     }
-    const expectedBaseTokenId = baseAssetKey === 'SETH' ? DEFAULT_NATIVE_TOKEN_ID : DEFAULT_SZEKO_TOKEN_ID;
-    const expectedQuoteTokenId = quoteAssetKey === 'SETH' ? DEFAULT_NATIVE_TOKEN_ID : DEFAULT_SZEKO_TOKEN_ID;
+    const expectedBaseTokenId = baseAssetKey === 'SETH' ? DEFAULT_NATIVE_TOKEN_ID : configuredSzekoTokenId;
+    const expectedQuoteTokenId = quoteAssetKey === 'SETH' ? DEFAULT_NATIVE_TOKEN_ID : configuredSzekoTokenId;
     if (
       !['SETH', 'SZEKO'].includes(baseAssetKey) ||
       !['SETH', 'SZEKO'].includes(quoteAssetKey) ||
@@ -4403,7 +4406,7 @@ async function bootstrapMarkets() {
       market.quoteTokenId !== expectedQuoteTokenId
     ) {
       throw new Error(
-        `Sepolia requires the sETH/sZEKO market using the configured native and sZEKO token IDs`
+        `Sepolia requires the sETH/sZEKO market using native token ${DEFAULT_NATIVE_TOKEN_ID} and configured sZEKO token ${configuredSzekoTokenId}`
       );
     }
     pairs.set(String(market.symbol).trim().toUpperCase(), market);
