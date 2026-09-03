@@ -2664,6 +2664,26 @@
               await clearDepositRecovery(intentId, { cancelServerIntent: false });
               throw new Error('deposit request was canceled in the wallet; no funds were sent');
             }
+            const resultError = String(result.lastError || result.error || '').toLowerCase();
+            if (
+              result.status === 'expired' ||
+              result.status === 'not_found' ||
+              /deposit intent (not found|.*expired)/i.test(resultError)
+            ) {
+              await clearDepositRecovery(intentId, { cancelServerIntent: false });
+              const terminal = {
+                ok: false,
+                pending: false,
+                terminal: true,
+                status: 'expired',
+                intentId,
+                asset: payload.asset,
+                message: 'This deposit recovery request is no longer valid. No funds were resent. Sync balances before starting a new deposit.',
+                lastError: result.lastError || result.error || null
+              };
+              setText('vaultOut', terminal);
+              return terminal;
+            }
             setDepositBusyState(true, 'confirming');
             setText('vaultOut', {
               ok: true,
@@ -2675,13 +2695,29 @@
               vaultDeltaRaw: result.vaultDeltaRaw || '0'
             });
           } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (/deposit intent (not found|.*expired)/i.test(errorMessage)) {
+              await clearDepositRecovery(intentId, { cancelServerIntent: false });
+              const terminal = {
+                ok: false,
+                pending: false,
+                terminal: true,
+                status: 'expired',
+                intentId,
+                asset: payload.asset,
+                message: 'This deposit recovery request is no longer valid. No funds were resent. Sync balances before starting a new deposit.',
+                lastError: errorMessage
+              };
+              setText('vaultOut', terminal);
+              return terminal;
+            }
             setText('vaultOut', {
               ok: true,
               pending: true,
               message: `Waiting for Zeko deposit state (${i + 1}/${attempts}). Do not resend this deposit.`,
               intentId,
               asset: payload.asset,
-              lastError: error instanceof Error ? error.message : String(error)
+              lastError: errorMessage
             });
           }
           await sleep(i < 20 ? 1500 : 2500);
@@ -2706,6 +2742,7 @@
         if (pending.intentId && !pending.txHash) {
           try {
             const recovered = await recoverDepositIntentFromTimeout(pending.intentId, pending);
+            if (recovered?.terminal) return;
             rememberLocalActivity(pending.wallet, [
               makeLocalActivityEvent('note_issued', {
                 asset: pending.asset,
@@ -4968,6 +5005,7 @@
               amount: Number(document.getElementById('noteAmount').value || 0)
             };
             const recovered = await recoverDepositIntentFromTimeout(error.depositIntentId, context);
+            if (recovered?.terminal) return;
             rememberLocalActivity(context.wallet, [
               makeLocalActivityEvent('note_issued', {
                 asset: context.asset,
