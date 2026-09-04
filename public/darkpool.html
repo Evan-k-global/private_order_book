@@ -1651,6 +1651,7 @@
           <div class="hd-tools">
             <select id="activityView" class="compact-select">
               <option value="your">Your Activity</option>
+              <option value="open">Open Orders</option>
               <option value="global">Global History</option>
             </select>
             <span class="activity-toolbar-label">Wallet</span>
@@ -1702,7 +1703,7 @@
             </div>
           </div>
           <div class="hint-box activity-privacy-note">
-            Your detailed order and fill history is kept in this browser. The server stores only redacted activity commitments.
+            Open Orders shows collateral currently locked by your orders. Cancel an order here to release its note collateral.
           </div>
           <div class="activity-table">
             <div class="activity-head">
@@ -3870,13 +3871,14 @@
         const timeBtn = document.getElementById('activityTimeHeader');
         const actionBtn = document.getElementById('activityActionHeader');
         const sideBtn = document.getElementById('activitySideHeader');
+        const openOrdersView = document.getElementById('activityView')?.value === 'open';
         if (timeBtn) {
           timeBtn.textContent = activityFilterState.sortTime === 'asc' ? 'Time ↑' : 'Time ↓';
           timeBtn.classList.add('is-active');
         }
         if (actionBtn) {
-          actionBtn.textContent = activityFilterState.openOnly ? 'Action: Open' : 'Action';
-          actionBtn.classList.toggle('is-active', activityFilterState.openOnly);
+          actionBtn.textContent = openOrdersView || activityFilterState.openOnly ? 'Action: Open' : 'Action';
+          actionBtn.classList.toggle('is-active', openOrdersView || activityFilterState.openOnly);
         }
         if (sideBtn) {
           const sideValue = String(document.getElementById('activitySideFilter')?.value || 'all').toUpperCase();
@@ -3885,7 +3887,7 @@
         }
       }
 
-      function renderActivity(events, openOrders) {
+      function renderActivity(events, openOrders, { openOnly = false } = {}) {
         const root = document.getElementById('activityRows');
         root.innerHTML = '';
         const filters = getActivityFilterConfig();
@@ -3914,7 +3916,7 @@
           )
         );
         const sortDirection = activityFilterState.sortTime === 'asc' ? 1 : -1;
-        if (activityFilterState.openOnly) collapsedEvents = [];
+        if (activityFilterState.openOnly || openOnly) collapsedEvents = [];
         const timeline = [
           ...activeOrders.map((order) => ({ kind: 'open-order', createdAtUnixMs: Number(order.createdAtUnixMs || 0), order })),
           ...collapsedEvents.map((ev) => ({ kind: 'event', createdAtUnixMs: Number(ev.createdAtUnixMs || 0), ev }))
@@ -3922,7 +3924,7 @@
         if ((!timeline || timeline.length === 0)) {
           const row = document.createElement('div');
           row.className = 'activity-row';
-          row.innerHTML = `<div>-</div><div>No activity</div><div>-</div><div>-</div><div>-</div><div>-</div><div>Submit orders to populate history.</div>`;
+          row.innerHTML = `<div>-</div><div>${openOnly ? 'No open orders' : 'No activity'}</div><div>-</div><div>-</div><div>-</div><div>-</div><div>${openOnly ? 'Open orders will appear here with a Cancel action.' : 'Submit orders to populate history.'}</div>`;
           root.appendChild(row);
           return;
         }
@@ -4638,7 +4640,9 @@
           limit,
           await createWalletAuthorization('account-read', 'activity', wallet)
         );
-        renderActivity(mergeActivityWithLocal(wallet, data.events || []), data.openOrders || []);
+        renderActivity(mergeActivityWithLocal(wallet, data.events || []), data.openOrders || [], {
+          openOnly: view === 'open'
+        });
       }
 
       async function refreshFeeStats() {
