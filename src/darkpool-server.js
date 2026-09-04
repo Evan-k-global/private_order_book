@@ -2030,8 +2030,11 @@ async function validateWalletAuthorization({ scope, action, wallet, resourceId =
   }
   const nonce = requireString(authorization.nonce, 'authorization.nonce');
   const nonceKey = `${scope}:${nonce}`;
-  pruneExpiredOrderAuthNonces(currentNow);
-  if (usedOrderAuthNonces.has(nonceKey)) throw new Error('wallet authorization nonce already used');
+  const reusableReadAuthorization = scope === 'account-read';
+  if (!reusableReadAuthorization) {
+    pruneExpiredOrderAuthNonces(currentNow);
+    if (usedOrderAuthNonces.has(nonceKey)) throw new Error('wallet authorization nonce already used');
+  }
   const signature = await normalizeAuthorizationSignature(
     authorization.signature ?? authorization.signatureBase58 ?? authorization.rawSignature ?? authorization.signedData ?? null
   );
@@ -2039,8 +2042,10 @@ async function validateWalletAuthorization({ scope, action, wallet, resourceId =
   if (!signer.verifyMessage({ data: providedPayload, signature, publicKey: authWallet })) {
     throw new Error('wallet authorization signature is invalid');
   }
-  usedOrderAuthNonces.set(nonceKey, expiresAtUnixMs);
-  queueEngineStatePersist();
+  if (!reusableReadAuthorization) {
+    usedOrderAuthNonces.set(nonceKey, expiresAtUnixMs);
+    queueEngineStatePersist();
+  }
   return { wallet: authWallet, nonce, expiresAtUnixMs, signature };
 }
 

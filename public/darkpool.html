@@ -1947,6 +1947,8 @@
       const WALLET_SYNC_COOLDOWN_MS = 20000;
       let activeAuroWallet = '';
       let autoAuroSyncInFlight = false;
+      const walletReadAuthorizationCache = new Map();
+      const walletReadAuthorizationInFlight = new Map();
       let activeDepositIntentId = '';
       let pendingTokenTransfer = null;
       const sepoliaWalletNetwork = {
@@ -3310,18 +3312,40 @@
       }
 
       async function createWalletAuthorization(scope, action, wallet, resourceId = null) {
+        const isReusableRead = scope === 'account-read';
+        const cacheKey = isReusableRead
+          ? `${scope}:${action}:${wallet}:${resourceId || ''}`
+          : '';
+        if (isReusableRead) {
+          const cached = walletReadAuthorizationCache.get(cacheKey);
+          if (cached && Number(cached.expiresAtUnixMs || 0) > Date.now() + 15000) return cached;
+          const inFlight = walletReadAuthorizationInFlight.get(cacheKey);
+          if (inFlight) return inFlight;
+        }
         const nonce = `${scope}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
         const expiresAtUnixMs = Date.now() + 5 * 60 * 1000;
         const payload = stableStringify({ scope, action, wallet, resourceId, nonce, expiresAtUnixMs });
-        const signed = await signMessageWithWallet(payload, wallet);
-        return {
-          publicKey: signed.publicKey || wallet,
-          payload,
-          nonce,
-          expiresAtUnixMs,
-          signature: signed.signature,
-          method: signed.method
-        };
+        const request = (async () => {
+          const signed = await signMessageWithWallet(payload, wallet);
+          const authorization = {
+            publicKey: signed.publicKey || wallet,
+            payload,
+            nonce,
+            expiresAtUnixMs,
+            signature: signed.signature,
+            method: signed.method
+          };
+          if (isReusableRead) walletReadAuthorizationCache.set(cacheKey, authorization);
+          return authorization;
+        })();
+        if (isReusableRead) walletReadAuthorizationInFlight.set(cacheKey, request);
+        try {
+          return await request;
+        } finally {
+          if (isReusableRead && walletReadAuthorizationInFlight.get(cacheKey) === request) {
+            walletReadAuthorizationInFlight.delete(cacheKey);
+          }
+        }
       }
 
       function updateOrderTypeUi() {
