@@ -5,6 +5,10 @@ import { compileOnchainOrderBookTransitionProgram } from './onchain-orderbook-pr
 import { hashStringToField, readOptionalEnv, requireEnv } from './utils.js';
 
 async function main() {
+  throw new Error(
+    'on-chain orderbook reference deployment is disabled: it does not yet bind transitions to account-owner authorization. ' +
+    'Do not deploy it with user funds.'
+  );
   const graphql = requireEnv('ZEKO_GRAPHQL');
   const txFee = UInt64.from(readOptionalEnv('TX_FEE', '2000000000'));
   const deployerKey = PrivateKey.fromBase58(requireEnv('DEPLOYER_PRIVATE_KEY'));

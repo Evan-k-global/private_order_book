@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "darkpool:serve": "node src/darkpool-server.js",
-    "render:start": "pnpm build:zkapp && AUTO_RUN_SETTLEMENT_WORKER=true AUTO_RUN_PROOF_WORKER=false ZKAPP_COMMIT_USE_PROOF=false REQUIRE_CACHED_PRIVATE_STATE_PROOF=false node src/darkpool-server.js",
+    "render:start": "pnpm build:zkapp && AUTO_RUN_SETTLEMENT_WORKER=true AUTO_RUN_PROOF_WORKER=true ZKAPP_COMMIT_USE_PROOF=true REQUIRE_CACHED_PRIVATE_STATE_PROOF=true node src/darkpool-server.js",
     "da:relay": "node src/da-relay-server.js",
     "start": "node src/darkpool-server.js",
     "bot:arb": "node scripts/arb-bot.js",

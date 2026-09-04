@@ -8,7 +8,7 @@
 - `GET /api/darkpool/book/hash?marketId=...`
 - `GET /api/darkpool/trades`
 - `GET /api/darkpool/candles`
-- `GET /api/darkpool/activity?wallet=...&limit=150`
+- `POST /api/darkpool/activity` (wallet-signed `account-read` authorization)
 - `GET /api/darkpool/status`
 - `GET /api/darkpool/fairness/audit?limit=200`
 - `GET /api/darkpool/frontends/fees?frontendId=...`
@@ -35,11 +35,11 @@ belongs to bridge and rollup settlement assurance, not the user execution path.
 ## Settlement APIs
 
 - `GET /api/darkpool/settlement/batches`
-- `POST /api/darkpool/settlement/mark-committed`
-- `POST /api/darkpool/settlement/cache-payout-proofs`
+- `POST /api/darkpool/settlement/mark-committed` (internal service only)
+- `POST /api/darkpool/settlement/cache-payout-proofs` (internal service only)
 - `POST /api/darkpool/settlement/cache-private-state-proof`
-- `GET /api/darkpool/settlement/payout-requirements?batchId=...`
-- `POST /api/darkpool/settlement/commit-next-local`
+- `GET /api/darkpool/settlement/payout-requirements?batchId=...` (internal service only)
+- `POST /api/darkpool/settlement/commit-next-local` (test mode/internal service only)
 - `GET /api/darkpool/settlement/proof-job/next`
 
 ## Vault / Note APIs
@@ -54,14 +54,11 @@ belongs to bridge and rollup settlement assurance, not the user execution path.
 - `POST /api/darkpool/vault/withdraw`
 - `GET /api/darkpool/vault/pool`
 - `GET /api/darkpool/notes/status?note=...`
-- `GET /api/darkpool/notes/portfolio?wallet=...`
+- `POST /api/darkpool/notes/portfolio` (wallet-signed `account-read` authorization)
 
-`deposit-intent` records a short-lived wallet/vault balance snapshot before the wallet signs.
-If Auro times out without returning a transaction hash, the client polls `deposit-recover`.
-Recovery mints exactly once only after Zeko shows the expected wallet decrease and vault increase;
-it does not resend the transfer or require Ethereum finality. This is a sequencer-state recovery
-mechanism, not a substitute for cryptographic transaction lookup when an indexed transaction hash
-is available.
+Deposits are minted only against a canonical transaction hash whose sender, recipient, token, and
+raw amount are verified. `deposit-recover` no longer mints from account-balance deltas because two
+independent balance observations cannot prove that the same transfer caused both changes.
 
 On Sepolia, the browser asks Auro to sign the deposit command with `onlySign: true`; the server
 then submits the signed command to the Sepolia `sendZkapp` mutation. This avoids making Auro wait
@@ -90,15 +87,15 @@ Useful methods:
 - `getTrades()`
 - `getCandles()`
 - `getStatus()`
-- `getActivity(wallet)`
+- `getActivity(wallet, limit, authorization)`
 - `syncOnchainBalance(payload)`
 - `placeOrder(payload)`
-- `cancelOrder(orderId, cancelToken)`
+- `cancelOrder(orderId, cancelToken, authorization)`
 - `replaceOrder(orderId, payload)`
 - `deposit(payload)`
 - `depositAuto(payload)`
 - `withdraw(payload)`
-- `getNotesPortfolio(wallet)`
+- `getNotesPortfolio(wallet, authorization)`
 - `getSettlementBatches(limit)`
 - `getOperatorZkappState(adminKey)`
 - `getPrivateStateWitness(adminKey)`

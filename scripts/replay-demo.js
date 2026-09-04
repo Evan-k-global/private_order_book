@@ -23,7 +23,7 @@ async function main() {
 
   await request('/api/darkpool/maker/quote', {
     method: 'POST',
-    headers: { 'x-maker-key': process.env.MAKER_API_KEY || 'demo-maker-key' },
+    headers: { 'x-maker-key': String(process.env.MAKER_API_KEY || '').trim() },
     body: {
       wallet: makerWallet,
       pair,

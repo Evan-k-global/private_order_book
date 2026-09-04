@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
@@ -78,9 +78,11 @@ const frontendFeeLedger = new Map();
 const protocolFeeBalances = {};
 const participantWallets = new Map();
 const depositIntents = new Map();
+const depositClaims = new Map();
 const ACTIVITY_PRIVACY_MODE = String(process.env.ACTIVITY_PRIVACY_MODE || 'redacted').trim().toLowerCase();
 const OPERATOR_ACTIVITY_REDACTION_ENABLED = ACTIVITY_PRIVACY_MODE !== 'verbose';
-const WALLET_HASH_SALT = process.env.WALLET_HASH_SALT || 'shadowbook-demo-salt';
+const DARKPOOL_TEST_MODE = String(process.env.DARKPOOL_TEST_MODE || 'false').toLowerCase() === 'true';
+const WALLET_HASH_SALT = String(process.env.WALLET_HASH_SALT || '').trim();
 const DARKPOOL_HOST = process.env.DARKPOOL_HOST || (process.env.RENDER ? '0.0.0.0' : '127.0.0.1');
 const AUTO_RUN_BACKGROUND_WORKERS = String(process.env.AUTO_RUN_BACKGROUND_WORKERS || 'false').toLowerCase() === 'true';
 const AUTO_RUN_PROOF_WORKER = String(process.env.AUTO_RUN_PROOF_WORKER || String(AUTO_RUN_BACKGROUND_WORKERS)).toLowerCase() === 'true';
@@ -98,10 +100,13 @@ const ZEKO_FAUCET_COMMAND = String(process.env.ZEKO_FAUCET_COMMAND || 'npx -y @z
 const ZEKO_FAUCET_GITHUB_TOKEN = String(
   process.env.ZEKO_FAUCET_GITHUB_TOKEN || process.env.GITHUB_TOKEN || ''
 ).trim();
-const REAL_FUNDS_MODE = true;
+const REAL_FUNDS_MODE = !DARKPOOL_TEST_MODE;
 // Secure mode is design-only here. Do not label this runtime operator-confidential
 // until an encrypted matcher and attested execution boundary are wired in.
 const SECURE_MODE_IMPLEMENTED = false;
+// The current proof circuit proves Merkle transitions, not asset conservation or
+// note ownership. Keep real-funds settlement fail-closed until that circuit exists.
+const PRIVATE_STATE_CONSERVATION_PROOF_IMPLEMENTED = false;
 const ONCHAIN_SYNC_TTL_MS = Number.parseInt(process.env.ONCHAIN_SYNC_TTL_MS || '60000', 10);
 function normalizeAssetMapKey(value) {
   return String(value || '').trim().toUpperCase();
@@ -173,7 +178,8 @@ const ASSET_DECIMALS = (() => {
 const TOKEN_CONTRACT_ADDRESSES = (() => {
   return parseUpperStringMap(process.env.TOKEN_CONTRACT_ADDRESSES_JSON || '{}', DEFAULT_TOKEN_CONTRACT_ADDRESSES);
 })();
-const MAKER_API_KEY = process.env.MAKER_API_KEY || 'demo-maker-key';
+const MAKER_API_KEY = String(process.env.MAKER_API_KEY || '').trim();
+const MAKER_WALLET = String(process.env.MAKER_WALLET || process.env.BOT_MAKER_WALLET || '').trim();
 const SERVER_BUILD_ID = 'matcher-debug-v3';
 const TAKER_FEE_BPS = Number.parseFloat(process.env.TAKER_FEE_BPS || '5');
 const FRONTEND_FEE_SHARE_BPS = Number.parseFloat(process.env.FRONTEND_FEE_SHARE_BPS || '3000');
@@ -181,7 +187,7 @@ const MARKET_ORDER_SLIPPAGE_BPS = Number.parseFloat(process.env.MARKET_ORDER_SLI
 const GTC_ORDER_EXPIRY_MS = Number.parseInt(process.env.GTC_ORDER_EXPIRY_MS || '0', 10);
 const SETTLEMENT_PROCEEDS_AS_NOTES =
   String(process.env.SETTLEMENT_PROCEEDS_AS_NOTES || String(!process.env.RENDER)).toLowerCase() === 'true';
-const ORDER_RECEIPT_SECRET = process.env.ORDER_RECEIPT_SECRET || 'shadowbook-receipt-secret';
+const ORDER_RECEIPT_SECRET = String(process.env.ORDER_RECEIPT_SECRET || '').trim();
 
 const WALLET_NETWORK_CONFIG = {
   key: 'zekoEthereumSepolia',
@@ -190,9 +196,9 @@ const WALLET_NETWORK_CONFIG = {
   graphqlUrl: ZEKO_GRAPHQL,
   chainType: 'zeko-on-ethereum'
 };
-const INTERNAL_SERVICE_SECRET = String(process.env.INTERNAL_SERVICE_SECRET || ORDER_RECEIPT_SECRET || 'shadowbook-internal-service').trim();
+const INTERNAL_SERVICE_SECRET = String(process.env.INTERNAL_SERVICE_SECRET || '').trim();
 const EARLY_ACCESS_COOKIE_NAME = String(process.env.EARLY_ACCESS_COOKIE_NAME || 'shadowbook_access').trim() || 'shadowbook_access';
-const EARLY_ACCESS_COOKIE_SECRET = String(process.env.EARLY_ACCESS_COOKIE_SECRET || ORDER_RECEIPT_SECRET || 'shadowbook-access-secret');
+const EARLY_ACCESS_COOKIE_SECRET = String(process.env.EARLY_ACCESS_COOKIE_SECRET || ORDER_RECEIPT_SECRET).trim();
 const EARLY_ACCESS_CODES = Array.from(
   new Set(
     String(process.env.EARLY_ACCESS_CODES || '')
@@ -223,7 +229,14 @@ const VAULT_DEPOSIT_ADDRESS = process.env.VAULT_DEPOSIT_ADDRESS || '';
 const REQUIRE_ONCHAIN_DEPOSIT_TX =
   String(process.env.REQUIRE_ONCHAIN_DEPOSIT_TX || 'true').toLowerCase() === 'true';
 const ALLOW_WALLET_TX_HASH_FALLBACK =
-  String(process.env.ALLOW_WALLET_TX_HASH_FALLBACK || 'true').toLowerCase() === 'true';
+  String(process.env.ALLOW_WALLET_TX_HASH_FALLBACK || 'false').toLowerCase() === 'true' && DARKPOOL_TEST_MODE;
+const MAX_REQUEST_BODY_BYTES = Math.max(1024, Number.parseInt(process.env.MAX_REQUEST_BODY_BYTES || '1048576', 10) || 1048576);
+const CORS_ALLOWED_ORIGINS = new Set(
+  String(process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
 const TX_FEE = String(process.env.TX_FEE || '200000').trim();
 const SEQUENCER_FEE_MODE = String(process.env.SEQUENCER_FEE_MODE || 'static').trim().toLowerCase();
 const ZEKO_SETTLEMENT_GRAPHQL = isSepoliaGraphqlEndpoint(process.env.ZEKO_SETTLEMENT_GRAPHQL)
@@ -687,10 +700,23 @@ function requirePositiveNumber(value, field) {
   return value;
 }
 
+function constantTimeSecretEquals(provided, expected) {
+  const a = Buffer.from(String(provided || ''));
+  const b = Buffer.from(String(expected || ''));
+  return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
+}
+
 function requireMakerAuth(req) {
   const key = String(req.headers['x-maker-key'] || '');
-  if (!key || key !== MAKER_API_KEY) {
+  if (!MAKER_API_KEY || !constantTimeSecretEquals(key, MAKER_API_KEY)) {
     throw new Error('maker auth failed');
+  }
+}
+
+function requireInternalServiceAuth(req) {
+  const key = String(req.headers['x-internal-service-key'] || '');
+  if (!INTERNAL_SERVICE_SECRET || !constantTimeSecretEquals(key, INTERNAL_SERVICE_SECRET)) {
+    throw new Error('internal service auth failed');
   }
 }
 
@@ -1235,16 +1261,20 @@ function isMissingGraphqlFieldError(errorText) {
   );
 }
 
-async function verifyOnchainDepositTx({ txHash, wallet, tokenId, amount }) {
+function assertCanonicalAppliedTx(tx, kind) {
+  const status = String(tx?.status || tx?.transactionStatus || '').trim().toLowerCase();
+  const failure = tx?.failureReason || tx?.failure || tx?.failures || null;
+  if (failure || ['failed', 'failure', 'rejected', 'pending', 'unknown'].includes(status)) {
+    throw new Error(`${kind} tx is not a canonical applied transaction`);
+  }
+}
+
+async function verifyOnchainDepositTx({ txHash, wallet, asset, tokenId, amount }) {
   if (!txHash || typeof txHash !== 'string') throw new Error('deposit tx hash is required');
   if (!VAULT_DEPOSIT_ADDRESS) throw new Error('VAULT_DEPOSIT_ADDRESS is required to verify note mint deposit tx');
   const looked = await fetchTxByHashDetailed(txHash.trim());
   if (!looked.ok || !looked.tx) {
-    const attempts = looked.attempts || [];
-    const lookupUnavailable = attempts.length > 0 && attempts.every((a) =>
-      isMissingGraphqlFieldError(a?.error)
-    );
-    if (lookupUnavailable && ALLOW_WALLET_TX_HASH_FALLBACK) {
+    if (ALLOW_WALLET_TX_HASH_FALLBACK) {
       return {
         ok: true,
         txHash: txHash.trim(),
@@ -1267,17 +1297,19 @@ async function verifyOnchainDepositTx({ txHash, wallet, tokenId, amount }) {
     );
   }
   const tx = looked.tx;
+  assertCanonicalAppliedTx(tx, 'deposit');
   const from = String(tx.from || '').trim();
   const to = String(tx.to || '').trim();
   const token = String(tx.token || tx.tokenId || '').trim();
-  const rawAmount = Number(tx.amount || 0);
+  const rawAmount = String(tx.amount || '').trim();
+  const canonical = canonicalAssetKey(asset);
+  const expectedRawAmount = BigInt(decimalToRawUnitsString(amount, ASSET_DECIMALS[canonical] ?? 9));
   if (!from || !to) throw new Error('deposit tx missing from/to fields');
   if (from !== wallet) throw new Error(`deposit tx sender mismatch: expected ${wallet}, got ${from}`);
   if (to !== VAULT_DEPOSIT_ADDRESS) throw new Error(`deposit tx recipient mismatch: expected ${VAULT_DEPOSIT_ADDRESS}, got ${to}`);
   if (tokenId && token && token !== tokenId) throw new Error(`deposit tx token mismatch: expected ${tokenId}, got ${token}`);
-  if (!Number.isFinite(rawAmount) || rawAmount <= 0) throw new Error('deposit tx amount invalid');
-  if (rawAmount + 1e-9 < amount) {
-    throw new Error(`deposit tx amount too low: ${rawAmount} < required ${amount}`);
+  if (!/^\d+$/.test(rawAmount) || BigInt(rawAmount) < expectedRawAmount) {
+    throw new Error(`deposit tx amount too low: ${rawAmount || 'invalid'} < required raw ${expectedRawAmount}`);
   }
   return {
     ok: true,
@@ -1428,45 +1460,28 @@ function issueSettlementProceedsNotes(batch) {
   return issued;
 }
 
-async function verifyOnchainPayoutTx({ txHash, wallet, tokenId, amount }) {
+async function verifyOnchainPayoutTx({ txHash, wallet, asset, tokenId, amount }) {
   if (!txHash || typeof txHash !== 'string') throw new Error('payout tx hash is required');
   if (!VAULT_DEPOSIT_ADDRESS) throw new Error('VAULT_DEPOSIT_ADDRESS is required to verify settlement payout tx');
   const looked = await fetchTxByHashDetailed(txHash.trim());
   if (!looked.ok || !looked.tx) {
-    const attempts = looked.attempts || [];
-    const lookupUnavailable = attempts.length > 0 && attempts.every((a) =>
-      isMissingGraphqlFieldError(a?.error)
-    );
-    if (lookupUnavailable && ALLOW_WALLET_TX_HASH_FALLBACK) {
-      return {
-        ok: true,
-        txHash: txHash.trim(),
-        tx: {
-          hash: txHash.trim(),
-          from: VAULT_DEPOSIT_ADDRESS,
-          to: wallet,
-          amount,
-          token: tokenId || null
-        },
-        txUnixMs: null,
-        unverified: true,
-        verificationMode: 'wallet-hash-fallback'
-      };
-    }
     const detail = (looked.attempts || []).map((a) => `${a.name}:${a.ok ? a.result : a.error}`).join(' | ');
     throw new Error(`unable to verify payout tx hash (${detail || looked.error || 'unknown'})`);
   }
   const tx = looked.tx;
+  assertCanonicalAppliedTx(tx, 'payout');
   const from = String(tx.from || '').trim();
   const to = String(tx.to || '').trim();
   const token = String(tx.token || tx.tokenId || '').trim();
-  const rawAmount = Number(tx.amount || 0);
+  const rawAmount = String(tx.amount || '').trim();
+  const expectedRawAmount = BigInt(decimalToRawUnitsString(amount, ASSET_DECIMALS[canonicalAssetKey(asset)] ?? 9));
   if (!from || !to) throw new Error('payout tx missing from/to fields');
   if (from !== VAULT_DEPOSIT_ADDRESS) throw new Error(`payout tx sender mismatch: expected ${VAULT_DEPOSIT_ADDRESS}, got ${from}`);
   if (to !== wallet) throw new Error(`payout tx recipient mismatch: expected ${wallet}, got ${to}`);
   if (tokenId && token && token !== tokenId) throw new Error(`payout tx token mismatch: expected ${tokenId}, got ${token}`);
-  if (!Number.isFinite(rawAmount) || rawAmount <= 0) throw new Error('payout tx amount invalid');
-  if (rawAmount + 1e-9 < amount) throw new Error(`payout tx amount too low: ${rawAmount} < required ${amount}`);
+  if (!/^\d+$/.test(rawAmount) || BigInt(rawAmount) < expectedRawAmount) {
+    throw new Error(`payout tx amount too low: ${rawAmount || 'invalid'} < required raw ${expectedRawAmount}`);
+  }
   return {
     ok: true,
     txHash: String(tx.hash || txHash).trim(),
@@ -1590,17 +1605,7 @@ async function recoverDepositIntent(intentId) {
       accountId,
       note: intent.note,
       participantBalances: accountBalanceSnapshot(accountId),
-      verificationMode: 'zeko-balance-delta-recovery'
-    };
-  }
-  if (intent.status === 'claiming') {
-    return {
-      ok: true,
-      recovered: false,
-      pending: true,
-      intentId,
-      status: 'claiming',
-      verificationMode: 'zeko-balance-delta-recovery'
+      verificationMode: 'verified-transaction-claim'
     };
   }
   if (intent.status === 'canceled') {
@@ -1610,73 +1615,10 @@ async function recoverDepositIntent(intentId) {
       pending: false,
       intentId,
       status: 'canceled',
-      verificationMode: 'zeko-balance-delta-recovery'
+      verificationMode: 'verified-transaction-claim'
     };
   }
-  if (Number(intent.expiresAtUnixMs || 0) <= now()) {
-    depositIntents.delete(intentId);
-    queueEngineStatePersist();
-    throw new Error('deposit intent expired; do not resend without checking the vault balance');
-  }
-
-  const current = await readDepositIntentBalances(intent);
-  const beforeWallet = BigInt(intent.beforeWalletRaw);
-  const beforeVault = BigInt(intent.beforeVaultRaw);
-  const currentWallet = BigInt(current.walletRaw);
-  const currentVault = BigInt(current.vaultRaw);
-  const rawAmount = BigInt(intent.rawAmount);
-  const walletDelta = beforeWallet - currentWallet;
-  const vaultDelta = currentVault - beforeVault;
-  const walletMatched = isNativeAsset(intent.asset) ? walletDelta >= rawAmount : walletDelta === rawAmount;
-  const vaultMatched = vaultDelta === rawAmount;
-
-  if (!walletMatched || !vaultMatched) {
-    return {
-      ok: true,
-      recovered: false,
-      pending: true,
-      intentId,
-      status: 'waiting_for_zeko',
-      walletDeltaRaw: walletDelta.toString(),
-      vaultDeltaRaw: vaultDelta.toString(),
-      expectedRawAmount: intent.rawAmount,
-      verificationMode: 'zeko-balance-delta-recovery'
-    };
-  }
-
-  const accountId = deriveBlindedAccountId({ wallet: intent.wallet });
-  intent.status = 'claiming';
-  queueEngineStatePersist();
-  let note;
-  try {
-    await syncParticipantFromOnchain(accountId, intent.wallet);
-    note = issueNote(intent.asset, intent.amount, 'onchain-backed-deposit-recovered', null, accountId);
-    if (!note) throw new Error('unable to issue recovered deposit note');
-    intent.status = 'claimed';
-    intent.claimedAtUnixMs = now();
-    intent.note = note;
-    intent.walletAfterRaw = current.walletRaw;
-    intent.vaultAfterRaw = current.vaultRaw;
-    queueEngineStatePersist();
-  } catch (error) {
-    intent.status = 'pending';
-    queueEngineStatePersist();
-    throw error;
-  }
-  return {
-    ok: true,
-    recovered: true,
-    pending: false,
-    intentId,
-    accountId,
-    note,
-    asset: intent.asset,
-    tokenId: intent.tokenId,
-    verifiedDepositTx: null,
-    verificationMode: 'zeko-balance-delta-recovery',
-    participantBalances: accountBalanceSnapshot(accountId),
-    poolTotals
-  };
+  throw new Error('deposit recovery by balance delta is disabled; submit the original sequencer transaction hash to /vault/deposit or /vault/deposit-auto');
 }
 
 function cancelDepositIntent(intentId) {
@@ -1689,6 +1631,90 @@ function cancelDepositIntent(intentId) {
   intent.canceledAtUnixMs = now();
   queueEngineStatePersist();
   return { ok: true, canceled: true, intentId, status: 'canceled' };
+}
+
+async function mintVerifiedDeposit({ accountId, wallet, resolved, amount, txHash, intentId = '' }) {
+  const claimKey = requireString(txHash, 'txHash');
+  const canonical = canonicalAssetKey(resolved.asset);
+  const existing = depositClaims.get(claimKey);
+  if (existing) {
+    if (existing.wallet !== wallet || existing.asset !== canonical || existing.tokenId !== resolved.tokenId) {
+      throw new Error('deposit tx hash is already bound to a different claim');
+    }
+    if (existing.status === 'claimed') {
+      return {
+        ok: true,
+        idempotent: true,
+        accountId,
+        asset: canonical,
+        tokenId: resolved.tokenId,
+        note: existing.note || null,
+        participantBalances: accountBalanceSnapshot(accountId),
+        poolTotals
+      };
+    }
+    throw new Error('deposit tx hash is already being verified; retry shortly');
+  }
+  if (usedDepositTxHashes.has(claimKey)) throw new Error('deposit tx hash already used');
+
+  const claim = {
+    txHash: claimKey,
+    wallet,
+    accountId,
+    asset: canonical,
+    tokenId: resolved.tokenId,
+    amount,
+    status: 'verifying',
+    createdAtUnixMs: now(),
+    note: null
+  };
+  depositClaims.set(claimKey, claim);
+  usedDepositTxHashes.add(claimKey);
+  await persistEngineState();
+  try {
+    const verifiedDeposit = await verifyOnchainDepositTx({
+      txHash: claimKey,
+      wallet,
+      asset: canonical,
+      tokenId: resolved.tokenId,
+      amount
+    });
+    const note = issueNote(canonical, amount, 'onchain-backed-deposit', null, accountId);
+    claim.status = 'claimed';
+    claim.claimedAtUnixMs = now();
+    claim.note = { noteHash: note.noteHash, asset: note.asset, amount: note.amount, createdAtUnixMs: note.createdAtUnixMs };
+    if (intentId) {
+      const intent = depositIntents.get(intentId);
+      if (intent && intent.wallet === wallet && intent.status === 'pending') {
+        intent.status = 'claimed';
+        intent.claimedAtUnixMs = now();
+        intent.note = claim.note;
+      }
+    }
+    await persistEngineState();
+    return {
+      ok: true,
+      accountId,
+      note,
+      asset: canonical,
+      tokenId: resolved.tokenId,
+      verifiedDepositTx: {
+        txHash: verifiedDeposit.txHash,
+        from: verifiedDeposit.tx?.from || null,
+        to: verifiedDeposit.tx?.to || null,
+        amount: verifiedDeposit.tx?.amount || null,
+        token: verifiedDeposit.tx?.token || verifiedDeposit.tx?.tokenId || null,
+        verificationMode: verifiedDeposit.verificationMode || 'onchain-query'
+      },
+      participantBalances: accountBalanceSnapshot(accountId),
+      poolTotals
+    };
+  } catch (error) {
+    depositClaims.delete(claimKey);
+    usedDepositTxHashes.delete(claimKey);
+    await persistEngineState();
+    throw error;
+  }
 }
 
 function hasOpenOrdersForAccount(accountId) {
@@ -1911,6 +1937,104 @@ function canonicalOperatorAuthorizationPayload(payload) {
   });
 }
 
+function canonicalWalletAuthorizationPayload(payload) {
+  return stableStringify({
+    scope: requireString(payload.scope, 'scope'),
+    action: requireString(payload.action, 'action'),
+    wallet: requireString(payload.wallet, 'wallet'),
+    resourceId: payload.resourceId ? requireString(payload.resourceId, 'resourceId') : null,
+    nonce: requireString(payload.nonce, 'nonce'),
+    expiresAtUnixMs: Number.parseInt(String(payload.expiresAtUnixMs || ''), 10)
+  });
+}
+
+function canonicalMakerQuoteAuthorizationPayload(payload) {
+  return stableStringify({
+    scope: 'maker-quote',
+    wallet: requireString(payload.wallet, 'wallet'),
+    marketId: requireString(payload.marketId, 'marketId'),
+    bidPrice: requirePositiveNumber(Number(payload.bidPrice), 'bidPrice'),
+    askPrice: requirePositiveNumber(Number(payload.askPrice), 'askPrice'),
+    bidSize: requirePositiveNumber(Number(payload.bidSize), 'bidSize'),
+    askSize: requirePositiveNumber(Number(payload.askSize), 'askSize'),
+    timeInForce: normalizeTif(payload.timeInForce),
+    visibility: payload.visibility === 'private' ? 'private' : 'public',
+    replace: Boolean(payload.replace),
+    frontendId: payload.frontendId ? normalizeFrontendId(payload.frontendId) : null,
+    nonce: requireString(payload.nonce, 'nonce'),
+    expiresAtUnixMs: Number.parseInt(String(payload.expiresAtUnixMs || ''), 10)
+  });
+}
+
+async function validateMakerQuoteAuthorization({ wallet, marketId, bidPrice, askPrice, bidSize, askSize, timeInForce, visibility, replace, frontendId, authorization }) {
+  if (!authorization || typeof authorization !== 'object') throw new Error('maker wallet authorization is required');
+  const authWallet = requireString(authorization.publicKey || authorization.address || authorization.wallet || '', 'makerAuthorization.publicKey');
+  if (authWallet !== wallet) throw new Error('maker authorization wallet mismatch');
+  const expectedPayload = canonicalMakerQuoteAuthorizationPayload({
+    wallet, marketId, bidPrice, askPrice, bidSize, askSize, timeInForce, visibility, replace, frontendId,
+    nonce: authorization.nonce, expiresAtUnixMs: authorization.expiresAtUnixMs
+  });
+  const providedPayload = requireString(authorization.payload, 'makerAuthorization.payload');
+  if (providedPayload !== expectedPayload) throw new Error('maker authorization payload mismatch');
+  const expiresAtUnixMs = Number.parseInt(String(authorization.expiresAtUnixMs || ''), 10);
+  const currentNow = now();
+  if (!Number.isFinite(expiresAtUnixMs) || expiresAtUnixMs < currentNow || expiresAtUnixMs > currentNow + 5 * 60 * 1000) {
+    throw new Error('maker authorization expiry is invalid');
+  }
+  const nonce = requireString(authorization.nonce, 'makerAuthorization.nonce');
+  const nonceKey = `maker-quote:${nonce}`;
+  pruneExpiredOrderAuthNonces(currentNow);
+  if (usedOrderAuthNonces.has(nonceKey)) throw new Error('maker authorization nonce already used');
+  const signature = await normalizeAuthorizationSignature(
+    authorization.signature ?? authorization.signatureBase58 ?? authorization.rawSignature ?? authorization.signedData ?? null
+  );
+  const signer = await getMinaSignerClient();
+  if (!signer.verifyMessage({ data: providedPayload, signature, publicKey: authWallet })) {
+    throw new Error('maker authorization signature is invalid');
+  }
+  usedOrderAuthNonces.set(nonceKey, expiresAtUnixMs);
+  queueEngineStatePersist();
+  return { wallet: authWallet, nonce, expiresAtUnixMs };
+}
+
+async function validateWalletAuthorization({ scope, action, wallet, resourceId = null, authorization }) {
+  if (!authorization || typeof authorization !== 'object') throw new Error('wallet authorization is required');
+  const authWallet = requireString(
+    authorization.publicKey || authorization.address || authorization.wallet || '',
+    'authorization.publicKey'
+  );
+  if (authWallet !== wallet) throw new Error('wallet authorization mismatch');
+  const expectedPayload = canonicalWalletAuthorizationPayload({
+    scope,
+    action,
+    wallet,
+    resourceId,
+    nonce: authorization.nonce,
+    expiresAtUnixMs: authorization.expiresAtUnixMs
+  });
+  const providedPayload = requireString(authorization.payload, 'authorization.payload');
+  if (providedPayload !== expectedPayload) throw new Error('wallet authorization payload mismatch');
+  const expiresAtUnixMs = Number.parseInt(String(authorization.expiresAtUnixMs || ''), 10);
+  const currentNow = now();
+  if (!Number.isFinite(expiresAtUnixMs) || expiresAtUnixMs < currentNow || expiresAtUnixMs > currentNow + 5 * 60 * 1000) {
+    throw new Error('wallet authorization expiry is invalid');
+  }
+  const nonce = requireString(authorization.nonce, 'authorization.nonce');
+  const nonceKey = `${scope}:${nonce}`;
+  pruneExpiredOrderAuthNonces(currentNow);
+  if (usedOrderAuthNonces.has(nonceKey)) throw new Error('wallet authorization nonce already used');
+  const signature = await normalizeAuthorizationSignature(
+    authorization.signature ?? authorization.signatureBase58 ?? authorization.rawSignature ?? authorization.signedData ?? null
+  );
+  const signer = await getMinaSignerClient();
+  if (!signer.verifyMessage({ data: providedPayload, signature, publicKey: authWallet })) {
+    throw new Error('wallet authorization signature is invalid');
+  }
+  usedOrderAuthNonces.set(nonceKey, expiresAtUnixMs);
+  queueEngineStatePersist();
+  return { wallet: authWallet, nonce, expiresAtUnixMs, signature };
+}
+
 async function validateOrderAuthorization({ wallet, market, side, orderType, timeInForce, limitPrice, quantity, fundingNoteHashes, visibility, frontendId, authorization }) {
   if (!authorization || typeof authorization !== 'object') {
     throw new Error('wallet-signed order authorization is required');
@@ -1941,7 +2065,7 @@ async function validateOrderAuthorization({ wallet, market, side, orderType, tim
   const expiresAtUnixMs = Number.parseInt(String(authorization.expiresAtUnixMs || ''), 10);
   if (!Number.isFinite(expiresAtUnixMs)) throw new Error('order authorization expiry is invalid');
   const currentNow = now();
-  if (expiresAtUnixMs < currentNow) throw new Error('order authorization expired');
+  if (expiresAtUnixMs < currentNow || expiresAtUnixMs > currentNow + 5 * 60 * 1000) throw new Error('order authorization expired');
   const nonce = requireString(authorization.nonce, 'orderAuthorization.nonce');
   pruneExpiredOrderAuthNonces(currentNow);
   if (usedOrderAuthNonces.has(nonce)) throw new Error('order authorization nonce already used');
@@ -1959,6 +2083,9 @@ async function validateOrderAuthorization({ wallet, market, side, orderType, tim
     publicKey: authWallet
   });
   if (!isValid) throw new Error('order authorization signature is invalid');
+  // Reserve before any awaited state transition so concurrent requests cannot replay this signature.
+  usedOrderAuthNonces.set(nonce, expiresAtUnixMs);
+  queueEngineStatePersist();
   return {
     wallet: authWallet,
     payload: providedPayload,
@@ -2154,10 +2281,10 @@ function normalizeFrontendId(value) {
 }
 
 function setCorsHeaders(req, res) {
-  const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '*';
-  res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '';
+  if (origin && CORS_ALLOWED_ORIGINS.has(origin)) res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Headers', 'content-type,x-maker-key,x-internal-service-key');
+  res.setHeader('Access-Control-Allow-Headers', 'content-type');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,HEAD');
 }
 
@@ -2573,9 +2700,12 @@ function engineStateSnapshot() {
     privateStateJournal,
     nextOrderSequenceNumber,
     poolTotals,
+    withdrawals,
     depositIntents: Object.fromEntries(depositIntents.entries()),
+    depositClaims: Object.fromEntries(depositClaims.entries()),
     usedDepositTxHashes: Array.from(usedDepositTxHashes.values()),
-    usedSettlementPayoutTxHashes: Array.from(usedSettlementPayoutTxHashes.values())
+    usedSettlementPayoutTxHashes: Array.from(usedSettlementPayoutTxHashes.values()),
+    usedWalletAuthorizationNonces: Array.from(usedOrderAuthNonces.entries())
   };
 }
 
@@ -2606,10 +2736,15 @@ async function loadEngineState() {
     const loadedSpentNullifiers = Array.isArray(state.spentNullifiers) ? state.spentNullifiers : [];
     const loadedSequencingReceipts = Array.isArray(state.sequencingReceipts) ? state.sequencingReceipts : [];
     const loadedPrivateStateJournal = Array.isArray(state.privateStateJournal) ? state.privateStateJournal : [];
+    const loadedWithdrawals = Array.isArray(state.withdrawals) ? state.withdrawals : [];
     const loadedDepositIntents = state.depositIntents && typeof state.depositIntents === 'object' ? state.depositIntents : {};
+    const loadedDepositClaims = state.depositClaims && typeof state.depositClaims === 'object' ? state.depositClaims : {};
     const loadedUsedDepositTxHashes = Array.isArray(state.usedDepositTxHashes) ? state.usedDepositTxHashes : [];
     const loadedUsedSettlementPayoutTxHashes = Array.isArray(state.usedSettlementPayoutTxHashes)
       ? state.usedSettlementPayoutTxHashes
+      : [];
+    const loadedWalletAuthorizationNonces = Array.isArray(state.usedWalletAuthorizationNonces)
+      ? state.usedWalletAuthorizationNonces
       : [];
 
     accounts.clear();
@@ -2649,10 +2784,19 @@ async function loadEngineState() {
       if (!entry || typeof entry !== 'object' || typeof entry.kind !== 'string') continue;
       privateStateJournal.push(entry);
     }
+    withdrawals.length = 0;
+    for (const withdrawal of loadedWithdrawals.slice(0, 500)) {
+      if (withdrawal && typeof withdrawal === 'object' && typeof withdrawal.id === 'string') withdrawals.push(withdrawal);
+    }
     depositIntents.clear();
     for (const [intentId, intent] of Object.entries(loadedDepositIntents)) {
       if (!intent || typeof intent !== 'object' || typeof intentId !== 'string') continue;
       if (Number(intent.expiresAtUnixMs || 0) > now()) depositIntents.set(intentId, intent);
+    }
+    depositClaims.clear();
+    for (const [txHash, claim] of Object.entries(loadedDepositClaims)) {
+      if (!claim || typeof claim !== 'object' || typeof txHash !== 'string' || !txHash.trim()) continue;
+      if (claim.status === 'claimed') depositClaims.set(txHash.trim(), claim);
     }
     const loadedNextOrderSequenceNumber = Number(state.nextOrderSequenceNumber || 0);
     if (Number.isFinite(loadedNextOrderSequenceNumber) && loadedNextOrderSequenceNumber > 0) {
@@ -2672,6 +2816,11 @@ async function loadEngineState() {
     usedSettlementPayoutTxHashes.clear();
     for (const txHash of loadedUsedSettlementPayoutTxHashes) {
       if (typeof txHash === 'string' && txHash.trim()) usedSettlementPayoutTxHashes.add(txHash.trim());
+    }
+    usedOrderAuthNonces.clear();
+    for (const entry of loadedWalletAuthorizationNonces) {
+      if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Number.isFinite(Number(entry[1]))) continue;
+      if (Number(entry[1]) >= now()) usedOrderAuthNonces.set(entry[0], Number(entry[1]));
     }
 
     orders.clear();
@@ -3741,6 +3890,36 @@ function sanitizeOrder(order) {
   };
 }
 
+function sanitizeAccountOrder(order) {
+  return { ...sanitizeOrder(order), cancelToken: order.cancelToken };
+}
+
+function sanitizePublicTrade(trade) {
+  return {
+    tradeId: trade.tradeId,
+    marketId: trade.marketId || null,
+    pair: trade.pair,
+    price: trade.price,
+    quantity: trade.quantity,
+    createdAtUnixMs: trade.createdAtUnixMs
+  };
+}
+
+function sanitizeSettlementBatch(batch) {
+  return {
+    batchId: batch.batchId,
+    batchType: batch.batchType,
+    status: batch.status,
+    batchHash: batch.batchHash,
+    txHash: batch.txHash || null,
+    createdAtUnixMs: batch.createdAtUnixMs,
+    committedAtUnixMs: batch.committedAtUnixMs || null,
+    tradeCount: Array.isArray(batch.tradeIds) ? batch.tradeIds.length : Number(batch.tradeCount || 0),
+    payoutCount: Array.isArray(batch.payouts) ? batch.payouts.length : 0,
+    requiresOnchainPayouts: Boolean(batch.requiresOnchainPayouts)
+  };
+}
+
 function activeOrdersForAccount(pair, accountId) {
   return Array.from(orders.values()).filter(
     (o) =>
@@ -3928,12 +4107,12 @@ async function claimZekoTestnetFaucet(address) {
   };
 }
 
-async function submitOnchainWithdrawalPayout({ accountId, wallet, asset, tokenId, amount }) {
+async function submitOnchainWithdrawalPayout({ withdrawalId, accountId, wallet, asset, tokenId, amount }) {
   if (!SETTLEMENT_PAYOUT_COMMAND) {
     throw new Error('SETTLEMENT_PAYOUT_COMMAND is required for note withdrawals');
   }
   const syntheticBatch = {
-    batchId: `withdraw_${randomUUID()}`,
+    batchId: `withdraw_${withdrawalId}`,
     batchType: 'trade_settlement',
     status: 'pending',
     payouts: [{ participant: accountId, wallet, asset, tokenId, amount }]
@@ -3982,8 +4161,31 @@ async function withdrawNoteCollateral({ accountId, wallet, asset, amount, fundin
     poolTotals[noteAssetKey] = Math.max(0, Number(poolTotals[noteAssetKey] || 0) - fullAmount);
   }
 
+  const withdrawalId = randomUUID();
+  const withdrawalRecord = {
+    id: withdrawalId,
+    accountId,
+    wallet,
+    asset: canonicalAsset,
+    amount: Number(numericAmount.toFixed(9)),
+    status: 'payout_pending',
+    createdAtUnixMs: nowUnixMs,
+    consumedFundingNotes: staged.map((item) => ({
+      noteHash: item.note.noteHash,
+      asset: item.note.asset,
+      originalAmount: item.fullAmount,
+      consumedAmount: Number(item.consumeAmount.toFixed(9)),
+      changeAmount: item.changeAmount > 1e-9 ? item.changeAmount : 0,
+      nullifier: item.nullifier
+    }))
+  };
+  withdrawals.unshift(withdrawalRecord);
+  if (withdrawals.length > 500) withdrawals.pop();
+  await persistEngineState();
+
   try {
     const payout = await submitOnchainWithdrawalPayout({
+      withdrawalId,
       accountId,
       wallet,
       asset: canonicalAsset,
@@ -4021,17 +4223,10 @@ async function withdrawNoteCollateral({ accountId, wallet, asset, amount, fundin
         nullifier: item.nullifier
       });
     }
-    withdrawals.unshift({
-      id: randomUUID(),
-      accountId,
-      wallet,
-      asset: canonicalAsset,
-      amount: Number(numericAmount.toFixed(9)),
-      txHash,
-      createdAtUnixMs: nowUnixMs,
-      consumedFundingNotes
-    });
-    if (withdrawals.length > 500) withdrawals.pop();
+    withdrawalRecord.status = 'submitted';
+    withdrawalRecord.txHash = txHash;
+    withdrawalRecord.payoutTxs = payoutTxs;
+    withdrawalRecord.submittedAtUnixMs = now();
     logActivity(accountId, 'note_withdrawn', {
       asset: canonicalAsset,
       amount: Number(numericAmount.toFixed(9)),
@@ -4051,9 +4246,10 @@ async function withdrawNoteCollateral({ accountId, wallet, asset, amount, fundin
     }
     await ensurePrivateStateBatch('withdrawal', accountId);
     scheduleParticipantOnchainResync(accountId, wallet, 'withdrawal');
-    queueEngineStatePersist();
+    await persistEngineState();
     return {
       ok: true,
+      withdrawalId,
       wallet,
       asset: canonicalAsset,
       amount: Number(numericAmount.toFixed(9)),
@@ -4064,14 +4260,19 @@ async function withdrawNoteCollateral({ accountId, wallet, asset, amount, fundin
       participantBalances: accountBalanceSnapshot(accountId)
     };
   } catch (error) {
-    for (const item of staged) {
-      const noteAssetKey = canonicalAssetKey(item.note.asset);
-      item.note.spentAtUnixMs = item.previousSpentAtUnixMs;
-      item.note.spentNullifier = item.previousSpentNullifier;
-      spentNullifiers.delete(item.nullifier);
-      poolTotals[noteAssetKey] = item.previousPoolTotal;
-    }
-    throw error;
+    withdrawalRecord.status = 'payout_pending';
+    withdrawalRecord.lastError = error instanceof Error ? error.message : String(error);
+    withdrawalRecord.lastAttemptAtUnixMs = now();
+    await persistEngineState();
+    return {
+      ok: false,
+      pending: true,
+      withdrawalId,
+      wallet,
+      asset: canonicalAsset,
+      amount: Number(numericAmount.toFixed(9)),
+      message: 'withdrawal remains pending until the payout executor can reconcile it; collateral stays locked to prevent duplicate payouts'
+    };
   }
 }
 
@@ -4102,8 +4303,18 @@ function spendNote(rawNote) {
 }
 
 async function readJsonBody(req) {
+  const declaredLength = Number(req.headers['content-length'] || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_REQUEST_BODY_BYTES) {
+    throw new Error('request body too large');
+  }
   const chunks = [];
-  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  let size = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.from(chunk);
+    size += buffer.length;
+    if (size > MAX_REQUEST_BODY_BYTES) throw new Error('request body too large');
+    chunks.push(buffer);
+  }
   const text = Buffer.concat(chunks).toString('utf8');
   return text ? JSON.parse(text) : {};
 }
@@ -4117,14 +4328,16 @@ function writeJson(res, status, data) {
 async function markBatchCommittedInternal(batchId, txHash = null, payoutTxs = []) {
   const target = settlementBatches.find((b) => Number(b.batchId) === Number(batchId));
   if (!target) throw new Error('batch not found');
+  if (REAL_FUNDS_MODE && target.batchType === 'trade_settlement' && !PRIVATE_STATE_CONSERVATION_PROOF_IMPLEMENTED) {
+    throw new Error('real-funds settlement is disabled until the private-state conservation proof is implemented');
+  }
 
   if (
     target.batchType === 'trade_settlement' &&
     target.status !== 'committed' &&
     (target.requiresOnchainPayouts !== undefined
       ? Boolean(target.requiresOnchainPayouts)
-      : SETTLEMENT_REQUIRE_ONCHAIN_PAYOUTS) &&
-    !(typeof txHash === 'string' && txHash.startsWith('local_'))
+      : SETTLEMENT_REQUIRE_ONCHAIN_PAYOUTS)
   ) {
     const requiredPayouts = Array.isArray(target.payouts) ? target.payouts : [];
     const provided = Array.isArray(payoutTxs) ? payoutTxs : [];
@@ -4148,12 +4361,21 @@ async function markBatchCommittedInternal(batchId, txHash = null, payoutTxs = []
       if (usedSettlementPayoutTxHashes.has(txHashProof)) {
         throw new Error(`payout tx hash already used: ${txHashProof}`);
       }
-      const verified = await verifyOnchainPayoutTx({
-        txHash: txHashProof,
-        wallet: payout.wallet,
-        tokenId: payout.tokenId,
-        amount: Number(payout.amount || 0)
-      });
+      usedSettlementPayoutTxHashes.add(txHashProof);
+      let verified;
+      try {
+        verified = await verifyOnchainPayoutTx({
+          txHash: txHashProof,
+          wallet: payout.wallet,
+          asset: payout.asset,
+          tokenId: payout.tokenId,
+          amount: Number(payout.amount || 0)
+        });
+      } catch (error) {
+        usedSettlementPayoutTxHashes.delete(txHashProof);
+        throw error;
+      }
+      usedSettlementPayoutTxHashes.delete(txHashProof);
       usedSettlementPayoutTxHashes.add(verified.txHash);
       verifiedPayouts.push({
         wallet: payout.wallet,
@@ -4300,6 +4522,9 @@ async function validateOperatorPanelAccess(body, action) {
     if (adminKey !== OPERATOR_PANEL_ADMIN_KEY) throw new Error('operator admin key is invalid');
     return { mode: 'admin-key' };
   }
+  if (!OPERATOR_PANEL_ALLOWED_WALLET) {
+    throw new Error('operator panel is not configured');
+  }
   return validateOperatorPanelAuthorization(action, body?.authorization);
 }
 
@@ -4404,7 +4629,7 @@ function computeStatusSnapshot(port) {
         (b) => b.status === 'pending' && b.batchType === 'trade_settlement' && Array.isArray(b.payouts) && b.payouts.length > 0
       ).length,
       nextSettlementBatchId,
-      latestBatch: settlementBatches[0] || null
+      latestBatch: settlementBatches[0] ? sanitizeSettlementBatch(settlementBatches[0]) : null
     },
     integrity: {
       openOrderBookHash: computeBookHash(),
@@ -4482,6 +4707,17 @@ async function bootstrapMarkets() {
 }
 
 async function main() {
+  if (REAL_FUNDS_MODE) {
+    const required = [
+      ['WALLET_HASH_SALT', WALLET_HASH_SALT],
+      ['ORDER_RECEIPT_SECRET', ORDER_RECEIPT_SECRET],
+      ['INTERNAL_SERVICE_SECRET', INTERNAL_SERVICE_SECRET],
+      ['ORDER_STATE_ENCRYPTION_KEY', ORDER_STATE_ENCRYPTION_KEY]
+    ];
+    const missing = required.filter(([, value]) => !value).map(([name]) => name);
+    if (missing.length) throw new Error(`missing required real-funds secrets: ${missing.join(', ')}`);
+    if (ENABLE_LOCAL_SETTLEMENT) throw new Error('ENABLE_LOCAL_SETTLEMENT cannot be enabled in real-funds mode');
+  }
   if (CONFIGURED_ZEKO_GRAPHQL && CONFIGURED_ZEKO_GRAPHQL !== SEPOLIA_ZEKO_GRAPHQL) {
     console.warn('[darkpool-server] Ignoring non-Sepolia ZEKO_GRAPHQL and using https://sepolia.zeko.io/graphql');
   }
@@ -4733,15 +4969,18 @@ async function main() {
         return;
       }
 
-      if (req.method === 'GET' && url.pathname === '/api/darkpool/activity') {
-        const accountId = deriveBlindedAccountId({
-          wallet: url.searchParams.get('wallet'),
-          participant: url.searchParams.get('participant')
-        });
-        const limitRaw = Number.parseInt(url.searchParams.get('limit') || '200', 10);
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/activity') {
+        const body = await readJsonBody(req);
+        const wallet = requireString(body.wallet, 'wallet');
+        await validateWalletAuthorization({ scope: 'account-read', action: 'activity', wallet, authorization: body.authorization });
+        const accountId = deriveBlindedAccountId({ wallet });
+        const limitRaw = Number.parseInt(body.limit || '200', 10);
         const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 1000) : 200;
         const events = activityEvents.filter((e) => e.accountId === accountId).slice(0, limit);
-        const openOrders = openOrdersSnapshot().filter((o) => o.participant === accountId).slice(0, limit);
+        const openOrders = Array.from(orders.values())
+          .filter((order) => order.participant === accountId && order.status !== 'FILLED' && order.status !== 'CANCELED')
+          .map(sanitizeAccountOrder)
+          .slice(0, limit);
         writeJson(res, 200, { accountId, count: events.length, events, openOrders });
         return;
       }
@@ -4838,8 +5077,16 @@ async function main() {
         writeJson(res, 200, {
           nextSettlementBatchId,
           count: Math.min(limit, settlementBatches.length),
-          batches: settlementBatches.slice(0, limit)
+          batches: settlementBatches.slice(0, limit).map(sanitizeSettlementBatch)
         });
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/api/darkpool/internal/settlement/batches') {
+        requireInternalServiceAuth(req);
+        const limitRaw = Number.parseInt(url.searchParams.get('limit') || '100', 10);
+        const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 100;
+        writeJson(res, 200, { nextSettlementBatchId, count: Math.min(limit, settlementBatches.length), batches: settlementBatches.slice(0, limit) });
         return;
       }
 
@@ -4951,6 +5198,7 @@ async function main() {
       }
 
       if (req.method === 'POST' && url.pathname === '/api/darkpool/settlement/mark-committed') {
+        requireInternalServiceAuth(req);
         const body = await readJsonBody(req);
         const batchId = Number.parseInt(String(body.batchId || ''), 10);
         if (!Number.isFinite(batchId) || batchId <= 0) throw new Error('batchId must be a positive integer');
@@ -4962,6 +5210,7 @@ async function main() {
       }
 
       if (req.method === 'POST' && url.pathname === '/api/darkpool/settlement/cache-payout-proofs') {
+        requireInternalServiceAuth(req);
         const body = await readJsonBody(req);
         const batchId = Number.parseInt(String(body.batchId || ''), 10);
         if (!Number.isFinite(batchId) || batchId <= 0) throw new Error('batchId must be a positive integer');
@@ -4984,6 +5233,7 @@ async function main() {
       }
 
       if (req.method === 'GET' && url.pathname === '/api/darkpool/settlement/payout-requirements') {
+        requireInternalServiceAuth(req);
         const batchId = Number.parseInt(String(url.searchParams.get('batchId') || ''), 10);
         if (!Number.isFinite(batchId) || batchId <= 0) throw new Error('batchId must be a positive integer');
         const batch = settlementBatches.find((b) => Number(b.batchId) === Number(batchId));
@@ -5001,6 +5251,8 @@ async function main() {
       }
 
       if (req.method === 'POST' && url.pathname === '/api/darkpool/settlement/commit-next-local') {
+        requireInternalServiceAuth(req);
+        if (REAL_FUNDS_MODE) throw new Error('local settlement is disabled in real-funds mode');
         if (!ENABLE_LOCAL_SETTLEMENT) {
           throw new Error('local settlement endpoint disabled');
         }
@@ -5014,6 +5266,7 @@ async function main() {
       }
 
       if (req.method === 'POST' && url.pathname === '/api/darkpool/settlement/anchor-book') {
+        requireInternalServiceAuth(req);
         const body = await readJsonBody(req);
         const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : 'manual';
         const batch = await enqueueBookAnchor(reason);
@@ -5028,6 +5281,7 @@ async function main() {
 
       if (req.method === 'POST' && url.pathname === '/api/darkpool/reference/update') {
         const body = await readJsonBody(req);
+        await validateOperatorPanelAccess(body, 'reference-update');
         const pair = resolveMarket(body);
         const referencePrice = requirePositiveNumber(body.referencePrice, 'referencePrice');
         pair.referencePrice = referencePrice;
@@ -5037,6 +5291,25 @@ async function main() {
 
       if (req.method === 'POST' && url.pathname === '/api/darkpool/accounts/fund') {
         throw new Error('manual funding endpoint removed; fund wallet on-chain and call /api/darkpool/accounts/sync-onchain');
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/test/mint-note') {
+        if (!DARKPOOL_TEST_MODE) {
+          writeJson(res, 404, { error: 'not found' });
+          return;
+        }
+        const body = await readJsonBody(req);
+        const wallet = requireString(body.wallet, 'wallet');
+        const asset = canonicalAssetKey(requireString(body.asset, 'asset'));
+        const amount = requirePositiveNumber(Number(body.amount), 'amount');
+        const accountId = deriveBlindedAccountId({ wallet });
+        const account = getAccount(accountId);
+        account.__wallet = wallet;
+        account.__lastOnchainSyncUnixMs = now();
+        const note = issueNote(asset, amount, 'test-fixture', null, accountId);
+        await persistEngineState();
+        writeJson(res, 200, { ok: true, accountId, note });
+        return;
       }
 
       if (req.method === 'POST' && url.pathname === '/api/darkpool/accounts/sync-onchain') {
@@ -5312,6 +5585,8 @@ async function main() {
       if (req.method === 'POST' && url.pathname === '/api/darkpool/maker/quote') {
         requireMakerAuth(req);
         const body = await readJsonBody(req);
+        const wallet = requireString(body.wallet, 'wallet');
+        if (!MAKER_WALLET || wallet !== MAKER_WALLET) throw new Error('maker wallet is not authorized for this service key');
         const accountId = deriveBlindedAccountId(body);
         const pairConfig = resolveMarket(body);
         const bidPrice = requirePositiveNumber(body.bidPrice, 'bidPrice');
@@ -5324,6 +5599,19 @@ async function main() {
         const visibility = String(body.visibility || 'public').trim().toLowerCase() === 'private' ? 'private' : 'public';
         const makerTag = typeof body.makerTag === 'string' ? body.makerTag.trim().slice(0, 60) : 'maker-quote';
         if (bidPrice >= askPrice) throw new Error('bidPrice must be less than askPrice');
+        await validateMakerQuoteAuthorization({
+          wallet,
+          marketId: pairConfig.marketId,
+          bidPrice,
+          askPrice,
+          bidSize,
+          askSize,
+          timeInForce: tif,
+          visibility,
+          replace,
+          frontendId,
+          authorization: body.makerAuthorization
+        });
 
         let canceled = 0;
         if (replace) {
@@ -5388,6 +5676,15 @@ async function main() {
       if (req.method === 'POST' && url.pathname === '/api/darkpool/maker/cancel-all') {
         requireMakerAuth(req);
         const body = await readJsonBody(req);
+        const wallet = requireString(body.wallet, 'wallet');
+        if (!MAKER_WALLET || wallet !== MAKER_WALLET) throw new Error('maker wallet is not authorized for this service key');
+        await validateWalletAuthorization({
+          scope: 'maker-cancel',
+          action: 'cancel-all',
+          wallet,
+          resourceId: body.marketId || body.pair || null,
+          authorization: body.makerAuthorization
+        });
         const accountId = deriveBlindedAccountId(body);
         const pairConfig = resolveMarket(body);
         const current = activeOrdersForAccount(pairConfig.symbol, accountId);
@@ -5413,6 +5710,14 @@ async function main() {
         const order = orders.get(orderId);
         if (!order) throw new Error('order not found');
         if (order.cancelToken !== cancelToken) throw new Error('invalid cancel token');
+        const wallet = getLinkedWalletForParticipant(order.participant);
+        await validateWalletAuthorization({
+          scope: 'order-cancel',
+          action: 'cancel',
+          wallet,
+          resourceId: orderId,
+          authorization: body.authorization
+        });
         const pairConfig = getPairConfigBySymbol(order.pair);
         if (!pairConfig) throw new Error('pair not found');
 
@@ -5597,7 +5902,7 @@ async function main() {
       }
 
       if (req.method === 'GET' && url.pathname === '/api/darkpool/trades') {
-        writeJson(res, 200, { count: publicTape.length, trades: publicTape.slice(0, 80) });
+        writeJson(res, 200, { count: publicTape.length, trades: publicTape.slice(0, 80).map(sanitizePublicTrade) });
         return;
       }
 
@@ -5796,58 +6101,15 @@ async function main() {
           throw new Error('on-chain balances are stale; sync wallet before minting note');
         }
 
-        let verifiedDeposit = null;
-        if (REQUIRE_ONCHAIN_DEPOSIT_TX) {
-          const providedTxHash = typeof body.txHash === 'string' ? body.txHash.trim() : '';
-          let txHashForVerify = providedTxHash;
-          if (!txHashForVerify) {
-            const found = await findLatestEligibleDepositTx({
-              wallet,
-              tokenId: resolved.tokenId,
-              amount
-            });
-            txHashForVerify = found.txHash;
-          }
-          verifiedDeposit = await verifyOnchainDepositTx({
-            txHash: txHashForVerify,
-            wallet,
-            tokenId: resolved.tokenId,
-            amount
-          });
-          usedDepositTxHashes.add(txHashForVerify);
+        if (!REQUIRE_ONCHAIN_DEPOSIT_TX) throw new Error('on-chain transaction verification is required for deposits');
+        const providedTxHash = typeof body.txHash === 'string' ? body.txHash.trim() : '';
+        let txHashForVerify = providedTxHash;
+        if (!txHashForVerify) {
+          const found = await findLatestEligibleDepositTx({ wallet, tokenId: resolved.tokenId, amount });
+          txHashForVerify = found.txHash;
         }
-        const canonical = canonicalAssetKey(resolved.asset);
-        const note = issueNote(canonical, amount, 'onchain-backed-deposit', null, accountId);
         const intentId = typeof body.intentId === 'string' ? body.intentId.trim() : '';
-        if (intentId) {
-          const intent = depositIntents.get(intentId);
-          if (intent && intent.status === 'pending') {
-            intent.status = 'claimed';
-            intent.claimedAtUnixMs = now();
-            intent.note = note;
-          }
-        }
-        queueEngineStatePersist();
-        writeJson(res, 200, {
-          ok: true,
-          accountId,
-          note,
-          asset: canonical,
-          tokenId: resolved.tokenId,
-          verifiedDepositTx: verifiedDeposit
-            ? {
-                txHash: verifiedDeposit.txHash,
-                from: verifiedDeposit.tx?.from || null,
-                to: verifiedDeposit.tx?.to || null,
-                amount: verifiedDeposit.tx?.amount || null,
-                token: verifiedDeposit.tx?.token || verifiedDeposit.tx?.tokenId || null,
-                unverified: Boolean(verifiedDeposit.unverified),
-                verificationMode: verifiedDeposit.verificationMode || 'unknown'
-              }
-            : null,
-          participantBalances: accountBalanceSnapshot(accountId),
-          poolTotals
-        });
+        writeJson(res, 200, await mintVerifiedDeposit({ accountId, wallet, resolved, amount, txHash: txHashForVerify, intentId }));
         return;
       }
 
@@ -5865,41 +6127,9 @@ async function main() {
         if (!Number.isFinite(lastSync) || now() - lastSync > ONCHAIN_SYNC_TTL_MS) {
           throw new Error('on-chain balances are stale; sync wallet before minting note');
         }
-        let verifiedDeposit = null;
-        if (REQUIRE_ONCHAIN_DEPOSIT_TX) {
-          const txHash = requireString(body.txHash, 'txHash');
-          if (usedDepositTxHashes.has(txHash)) throw new Error('deposit tx hash already used');
-          verifiedDeposit = await verifyOnchainDepositTx({
-            txHash,
-            wallet,
-            tokenId: resolved.tokenId,
-            amount
-          });
-          usedDepositTxHashes.add(txHash);
-        }
-        const canonical = canonicalAssetKey(resolved.asset);
-        const note = issueNote(canonical, amount, 'onchain-backed-deposit', null, accountId);
-        queueEngineStatePersist();
-        writeJson(res, 200, {
-          ok: true,
-          accountId,
-          note,
-          asset: canonical,
-          tokenId: resolved.tokenId,
-          verifiedDepositTx: verifiedDeposit
-            ? {
-                txHash: verifiedDeposit.txHash,
-                from: verifiedDeposit.tx?.from || null,
-                to: verifiedDeposit.tx?.to || null,
-                amount: verifiedDeposit.tx?.amount || null,
-                token: verifiedDeposit.tx?.token || verifiedDeposit.tx?.tokenId || null,
-                unverified: Boolean(verifiedDeposit.unverified),
-                verificationMode: verifiedDeposit.verificationMode || 'unknown'
-              }
-            : null,
-          participantBalances: accountBalanceSnapshot(accountId),
-          poolTotals
-        });
+        if (!REQUIRE_ONCHAIN_DEPOSIT_TX) throw new Error('on-chain transaction verification is required for deposits');
+        const txHash = requireString(body.txHash, 'txHash');
+        writeJson(res, 200, await mintVerifiedDeposit({ accountId, wallet, resolved, amount, txHash }));
         return;
       }
 
@@ -5919,6 +6149,13 @@ async function main() {
         const fundingNoteHashes = Array.isArray(body.noteHashes)
           ? body.noteHashes.map((entry) => requireString(entry, 'noteHashes[]'))
           : [];
+        await validateWalletAuthorization({
+          scope: 'withdraw',
+          action: 'withdraw',
+          wallet: linkedWallet,
+          resourceId: `${canonicalAssetKey(asset)}:${amount}`,
+          authorization: body.authorization
+        });
         const result = await withdrawNoteCollateral({
           accountId,
           wallet: recipient,
@@ -5959,17 +6196,17 @@ async function main() {
         return;
       }
 
-      if (req.method === 'GET' && url.pathname === '/api/darkpool/notes/portfolio') {
-        const accountId = deriveBlindedAccountId({
-          wallet: url.searchParams.get('wallet'),
-          participant: url.searchParams.get('participant')
-        });
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/notes/portfolio') {
+        const body = await readJsonBody(req);
+        const wallet = requireString(body.wallet, 'wallet');
+        await validateWalletAuthorization({ scope: 'account-read', action: 'portfolio', wallet, authorization: body.authorization });
+        const accountId = deriveBlindedAccountId({ wallet });
         writeJson(res, 200, { ok: true, ...notePortfolioForAccount(accountId) });
         return;
       }
 
       if (req.method === 'GET' && url.pathname === '/api/darkpool/vault/pool') {
-        writeJson(res, 200, { poolTotals, withdrawalCount: withdrawals.length, recentWithdrawals: withdrawals.slice(0, 20) });
+        writeJson(res, 200, { poolTotals, withdrawalCount: withdrawals.length });
         return;
       }
 

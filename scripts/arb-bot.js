@@ -12,7 +12,7 @@ const BASE_ASSET = process.env.BOT_BASE_ASSET || 'sETH';
 const QUOTE_ASSET = process.env.BOT_QUOTE_ASSET || 'sZEKO';
 const MAKER_WALLET = process.env.BOT_MAKER_WALLET || 'B62qbot_maker_wallet';
 const TAKER_WALLET = process.env.BOT_TAKER_WALLET || 'B62qbot_taker_wallet';
-const MAKER_API_KEY = process.env.MAKER_API_KEY || 'demo-maker-key';
+const MAKER_API_KEY = String(process.env.MAKER_API_KEY || '').trim();
 
 const LOOP_MS = Number.parseInt(process.env.BOT_LOOP_MS || '2200', 10);
 const QUOTE_SPREAD_BPS = Number.parseFloat(process.env.BOT_QUOTE_SPREAD_BPS || '18');
@@ -30,6 +30,7 @@ const STOP_ON_LOW_BALANCE = String(process.env.BOT_STOP_ON_LOW_BALANCE || 'false
 const MAKER_VISIBILITY = String(process.env.BOT_MAKER_VISIBILITY || 'public').toLowerCase() === 'private' ? 'private' : 'public';
 const TAKER_VISIBILITY = String(process.env.BOT_TAKER_VISIBILITY || process.env.BOT_VISIBILITY || 'private').toLowerCase() === 'private' ? 'private' : 'public';
 const TAKER_PRIVATE_KEY = String(process.env.BOT_TAKER_PRIVATE_KEY || process.env.AGENT_PRIVATE_KEY || '').trim();
+const MAKER_PRIVATE_KEY = String(process.env.BOT_MAKER_PRIVATE_KEY || '').trim();
 const INVENTORY_MODE = String(process.env.BOT_INVENTORY_MODE || 'coordinated').toLowerCase();
 const TARGET_BASE_SHARE = Number.parseFloat(process.env.BOT_TARGET_BASE_SHARE || '0.5');
 const NOTE_RESERVE_BASE = Number.parseFloat(process.env.BOT_NOTE_RESERVE_BASE || '0.002');
@@ -127,8 +128,20 @@ async function getBalances(wallet) {
   return data.balances || {};
 }
 
-async function getNotesPortfolio(wallet) {
-  return request(`/api/darkpool/notes/portfolio?wallet=${encodeURIComponent(wallet)}`);
+async function createWalletAuthorization({ scope, action, wallet, privateKey, resourceId = null }) {
+  if (!privateKey) throw new Error(`${scope} requires a configured private key`);
+  const nonce = `${scope}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+  const expiresAtUnixMs = Date.now() + 5 * 60 * 1000;
+  const payload = stableStringify({ scope, action, wallet, resourceId, nonce, expiresAtUnixMs });
+  const signer = await getSignerClient();
+  const signed = signer.signMessage(payload, privateKey);
+  if (signed.publicKey !== wallet) throw new Error(`${scope} private key does not match ${wallet}`);
+  return { publicKey: signed.publicKey, payload, nonce, expiresAtUnixMs, signature: signed.signature, method: 'mina-signer:testnet' };
+}
+
+async function getNotesPortfolio(wallet, privateKey) {
+  const authorization = await createWalletAuthorization({ scope: 'account-read', action: 'portfolio', wallet, privateKey });
+  return request('/api/darkpool/notes/portfolio', { method: 'POST', body: { wallet, authorization } });
 }
 
 async function getSettlementBatches(limit = 20) {
@@ -240,21 +253,35 @@ async function placeMakerQuote(mid, market, makerPortfolio = null) {
     return null;
   }
 
+  const nonce = `maker_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+  const expiresAtUnixMs = Date.now() + 5 * 60 * 1000;
+  const quotePayload = {
+    scope: 'maker-quote', wallet: MAKER_WALLET, marketId: market.marketId,
+    bidPrice: Number(bid.toFixed(2)), askPrice: Number(ask.toFixed(2)),
+    bidSize: Number(quoteSize.toFixed(6)), askSize: Number(quoteSize.toFixed(6)),
+    timeInForce: 'GTC', visibility: MAKER_VISIBILITY, replace: true, frontendId: FRONTEND_MAKER || null,
+    nonce, expiresAtUnixMs
+  };
+  const signer = await getSignerClient();
+  const payload = stableStringify(quotePayload);
+  const signed = signer.signMessage(payload, MAKER_PRIVATE_KEY);
+  if (signed.publicKey !== MAKER_WALLET) throw new Error('BOT_MAKER_PRIVATE_KEY does not match BOT_MAKER_WALLET');
   return request('/api/darkpool/maker/quote', {
     method: 'POST',
     headers: { 'x-maker-key': MAKER_API_KEY },
     body: {
       wallet: MAKER_WALLET,
       marketId: market.marketId,
-      bidPrice: Number(bid.toFixed(2)),
-      askPrice: Number(ask.toFixed(2)),
-      bidSize: Number(quoteSize.toFixed(6)),
-      askSize: Number(quoteSize.toFixed(6)),
+      bidPrice: quotePayload.bidPrice,
+      askPrice: quotePayload.askPrice,
+      bidSize: quotePayload.bidSize,
+      askSize: quotePayload.askSize,
       timeInForce: 'GTC',
       visibility: MAKER_VISIBILITY,
       replace: true,
       makerTag: 'arb-bot-maker',
-      frontendId: FRONTEND_MAKER
+      frontendId: FRONTEND_MAKER,
+      makerAuthorization: { publicKey: signed.publicKey, payload, nonce, expiresAtUnixMs, signature: signed.signature, method: 'mina-signer:testnet' }
     }
   });
 }
@@ -326,8 +353,8 @@ async function maybeTopup() {
 
   const maker = await getBalances(MAKER_WALLET);
   const taker = await getBalances(TAKER_WALLET);
-  const makerPortfolio = await getNotesPortfolio(MAKER_WALLET);
-  const takerPortfolio = await getNotesPortfolio(TAKER_WALLET);
+  const makerPortfolio = await getNotesPortfolio(MAKER_WALLET, MAKER_PRIVATE_KEY);
+  const takerPortfolio = await getNotesPortfolio(TAKER_WALLET, TAKER_PRIVATE_KEY);
 
   const makerQuote = noteBalance(makerPortfolio, QUOTE_ASSET);
   const makerBase = noteBalance(makerPortfolio, BASE_ASSET);
@@ -358,8 +385,8 @@ async function runOneCycle() {
   tick += 1;
   const market = await getMarket();
   const mid = pickMid(market);
-  const makerPortfolio = await getNotesPortfolio(MAKER_WALLET);
-  const takerPortfolio = await getNotesPortfolio(TAKER_WALLET);
+  const makerPortfolio = await getNotesPortfolio(MAKER_WALLET, MAKER_PRIVATE_KEY);
+  const takerPortfolio = await getNotesPortfolio(TAKER_WALLET, TAKER_PRIVATE_KEY);
 
   if (MAX_PENDING_SETTLEMENT_BATCHES > 0) {
     const settlement = await getSettlementBatches(Math.max(MAX_PENDING_SETTLEMENT_BATCHES + 5, 20));
@@ -496,9 +523,12 @@ async function main() {
     AUTO_FUND,
     BOT_REAL_FUNDS,
     STOP_ON_LOW_BALANCE,
-    signerConfigured: Boolean(TAKER_PRIVATE_KEY)
+    signerConfigured: Boolean(TAKER_PRIVATE_KEY && MAKER_PRIVATE_KEY)
   });
 
+  if (!MAKER_API_KEY || !MAKER_PRIVATE_KEY || !TAKER_PRIVATE_KEY) {
+    throw new Error('MAKER_API_KEY, BOT_MAKER_PRIVATE_KEY, and BOT_TAKER_PRIVATE_KEY are required');
+  }
   await maybeTopup();
 
   while (true) {

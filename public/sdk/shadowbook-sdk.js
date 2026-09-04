@@ -88,10 +88,9 @@
     return this.request('/api/darkpool/fairness/audit?limit=' + encodeURIComponent(String(l)));
   };
 
-  ShadowBookClient.prototype.getActivity = function getActivity(wallet, limit) {
-    var w = encodeURIComponent(wallet || '');
+  ShadowBookClient.prototype.getActivity = function getActivity(wallet, limit, authorization) {
     var l = Number.isFinite(Number(limit)) ? Number(limit) : 150;
-    return this.request('/api/darkpool/activity?wallet=' + w + '&limit=' + encodeURIComponent(String(l)));
+    return this.request('/api/darkpool/activity', { method: 'POST', body: { wallet: wallet || '', limit: l, authorization: authorization || null } });
   };
 
   ShadowBookClient.prototype.getBalance = function getBalance(wallet) {
@@ -124,10 +123,10 @@
     return this.request('/api/darkpool/orders/place', { method: 'POST', body: order });
   };
 
-  ShadowBookClient.prototype.cancelOrder = function cancelOrder(orderId, cancelToken) {
+  ShadowBookClient.prototype.cancelOrder = function cancelOrder(orderId, cancelToken, authorization) {
     return this.request('/api/darkpool/orders/' + encodeURIComponent(orderId) + '/cancel', {
       method: 'POST',
-      body: { cancelToken: cancelToken }
+      body: { cancelToken: cancelToken, authorization: authorization || null }
     });
   };
 
@@ -202,8 +201,8 @@
     return this.request('/api/darkpool/notes/status?note=' + encodeURIComponent(note || ''));
   };
 
-  ShadowBookClient.prototype.getNotesPortfolio = function getNotesPortfolio(wallet) {
-    return this.request('/api/darkpool/notes/portfolio?wallet=' + encodeURIComponent(wallet || ''));
+  ShadowBookClient.prototype.getNotesPortfolio = function getNotesPortfolio(wallet, authorization) {
+    return this.request('/api/darkpool/notes/portfolio', { method: 'POST', body: { wallet: wallet || '', authorization: authorization || null } });
   };
 
   ShadowBookClient.prototype.getFrontendFees = function getFrontendFees(frontendId) {

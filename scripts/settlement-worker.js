@@ -48,7 +48,8 @@ async function request(pathname, options = {}) {
 }
 
 async function getNextPending() {
-  const data = await request('/api/darkpool/settlement/batches?limit=500');
+  if (!INTERNAL_SERVICE_SECRET) throw new Error('INTERNAL_SERVICE_SECRET is required for settlement worker');
+  const data = await request('/api/darkpool/internal/settlement/batches?limit=500');
   const pending = (data.batches || [])
     .filter((b) => b.status === 'pending')
     .sort((a, b) => Number(a.batchId) - Number(b.batchId));

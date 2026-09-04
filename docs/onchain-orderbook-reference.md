@@ -139,9 +139,9 @@ pnpm zkapp:smoke:onchain-orderbook
 
 Deploy isolated reference contract:
 
-```bash
-pnpm zkapp:deploy:onchain-orderbook
-```
+`pnpm zkapp:deploy:onchain-orderbook` is intentionally disabled. The reference
+transition circuit does not bind account leaves to user authorization, so it
+must not be deployed with user collateral.
 
 Read isolated reference state:
 

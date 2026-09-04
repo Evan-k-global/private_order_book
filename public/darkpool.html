@@ -2891,7 +2891,10 @@
           return;
         }
         try {
-          const portfolio = await sdk.getNotesPortfolio(pending.wallet);
+          const portfolio = await sdk.getNotesPortfolio(
+            pending.wallet,
+            await createWalletAuthorization('account-read', 'portfolio', pending.wallet)
+          );
           const existing = Number(portfolio?.outstandingByAsset?.[String(pending.asset).toUpperCase()] || 0);
           if (existing + 1e-9 >= Number(pending.amount || 0)) {
             clearPendingDeposit(pending.txHash);
@@ -2988,7 +2991,10 @@
           return;
         }
         try {
-          const data = await sdk.getNotesPortfolio(wallet);
+          const data = await sdk.getNotesPortfolio(
+            wallet,
+            await createWalletAuthorization('account-read', 'portfolio', wallet)
+          );
           latestNotesPortfolio = data;
           const walletTotals = data?.onchainTotals || {};
           const byAsset = data?.outstandingByAsset || {};
@@ -3303,6 +3309,21 @@
         };
       }
 
+      async function createWalletAuthorization(scope, action, wallet, resourceId = null) {
+        const nonce = `${scope}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+        const expiresAtUnixMs = Date.now() + 5 * 60 * 1000;
+        const payload = stableStringify({ scope, action, wallet, resourceId, nonce, expiresAtUnixMs });
+        const signed = await signMessageWithWallet(payload, wallet);
+        return {
+          publicKey: signed.publicKey || wallet,
+          payload,
+          nonce,
+          expiresAtUnixMs,
+          signature: signed.signature,
+          method: signed.method
+        };
+      }
+
       function updateOrderTypeUi() {
         const orderType = document.getElementById('ordType').value;
         const tif = document.getElementById('ordTif');
@@ -3450,8 +3471,12 @@
 
       async function cancelOpenOrder(orderId, cancelToken) {
         if (!orderId || !cancelToken) throw new Error('cancel credentials missing');
-        const result = await sdk.cancelOrder(orderId, cancelToken);
         const wallet = syncActivityWalletFromOrder(false);
+        const result = await sdk.cancelOrder(
+          orderId,
+          cancelToken,
+          await createWalletAuthorization('order-cancel', 'cancel', wallet, orderId)
+        );
         if (wallet) {
           const order = result?.order || {};
           rememberLocalActivity(wallet, [
@@ -4519,7 +4544,11 @@
           return;
         }
         try {
-          const activity = await sdk.getActivity(wallet, 100);
+          const activity = await sdk.getActivity(
+            wallet,
+            100,
+            await createWalletAuthorization('account-read', 'activity', wallet)
+          );
           const withdrawals = mergeActivityWithLocal(wallet, activity.events || []).filter((ev) => ev.type === 'note_withdrawn');
           const latest = withdrawals[0];
           status.textContent = latest
@@ -4598,7 +4627,11 @@
           return;
         }
         const limit = Math.max(1, Number(document.getElementById('activityLimit').value || 150));
-        const data = await sdk.getActivity(wallet, limit);
+        const data = await sdk.getActivity(
+          wallet,
+          limit,
+          await createWalletAuthorization('account-read', 'activity', wallet)
+        );
         renderActivity(mergeActivityWithLocal(wallet, data.events || []), data.openOrders || []);
       }
 
@@ -5047,7 +5080,12 @@
         try {
           const id = document.getElementById('inspectOrderId').value.trim();
           const token = document.getElementById('inspectToken').value.trim();
-          const result = await sdk.cancelOrder(id, token);
+          const wallet = syncActivityWalletFromOrder(false);
+          const result = await sdk.cancelOrder(
+            id,
+            token,
+            await createWalletAuthorization('order-cancel', 'cancel', wallet, id)
+          );
           setText('inspectOut', result);
           await refreshTrades();
           await refreshBook();
@@ -5344,7 +5382,8 @@
             pending: true,
             message: `Preparing ${fmtDisplayNumber(amount)} ${formatDisplayAsset(asset)} withdrawal to ${wallet}. Spending private notes and submitting payout transaction...`
           });
-          const result = await sdk.withdraw({ wallet, asset, amount });
+          const authorization = await createWalletAuthorization('withdraw', 'withdraw', wallet, `${String(asset).toUpperCase()}:${amount}`);
+          const result = await sdk.withdraw({ wallet, asset, amount, authorization });
           rememberLocalActivity(wallet, [
             makeLocalActivityEvent('note_withdrawn', {
               asset,

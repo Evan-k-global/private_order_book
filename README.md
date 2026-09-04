@@ -5,7 +5,7 @@ ShadowBook is a private order book / dark pool demo built on Zeko Ethereum Sepol
 - public and private order visibility modes
 - off-chain matching
 - on-chain settlement anchoring through a zkApp
-- a lean settlement zkApp as the default hosted path
+- a test-only lean settlement path; real-funds settlement is fail-closed pending a conservation proof
 - a single supported market: `sETH/sZEKO`
 
 ## What Works
@@ -45,15 +45,17 @@ Run the API/UI only:
 pnpm darkpool:serve
 ```
 
-### Demo / hosted single service
+### Test-only hosted demo
 
-Run the server with the embedded settlement loop and lean zkApp path:
+Run the server with the embedded workers. Do not configure it with real collateral: the current
+private-state circuit does not yet prove conservation or note ownership, so real-funds settlement
+is intentionally disabled.
 
 ```bash
 pnpm render:start
 ```
 
-### Advanced proving later
+### Advanced proving reference
 
 If you want extra proof capacity later, keep the main service running and add:
 
