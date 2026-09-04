@@ -3262,24 +3262,6 @@
         return (noteHashes || []).filter((hash) => valid.has(String(hash)));
       }
 
-      function autoSelectFundingNotes(asset, requiredAmount) {
-        const notes = Array.isArray(latestNotesPortfolio?.outstandingNotes) ? latestNotesPortfolio.outstandingNotes : [];
-        const matches = notes
-          .filter((note) => String(note?.asset || '').toUpperCase() === String(asset || '').toUpperCase())
-          .sort((a, b) => Number(a.createdAtUnixMs || 0) - Number(b.createdAtUnixMs || 0));
-        const selected = [];
-        let remaining = Number(requiredAmount || 0);
-        for (const note of matches) {
-          if (!(remaining > 1e-9)) break;
-          selected.push(String(note.noteHash));
-          remaining -= Number(note.amount || 0);
-        }
-        if (remaining > 1e-9) {
-          throw new Error(`insufficient note collateral for ${asset}: required ${fmtDisplayNumber(requiredAmount)}`);
-        }
-        return selected;
-      }
-
       async function createOrderAuthorization({ wallet, market, side, orderType, timeInForce, limitPrice, quantity, fundingNoteHashes, frontendId }) {
         const nonce = `ord_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
         const expiresAtUnixMs = Date.now() + 5 * 60 * 1000;
@@ -4809,12 +4791,11 @@
         }
         const required = pretrade.required || {};
         const requiredAsset = required.asset;
-        const requiredAmount = Number(required.amount || 0);
         const parsedOverrideHashes = fundingNoteRaw ? parseOverrideNoteHashes(fundingNoteRaw) : [];
         const sanitizedOverrideHashes = sanitizeOverrideNoteHashes(parsedOverrideHashes, requiredAsset);
         const fundingNoteHashes = sanitizedOverrideHashes.length
           ? sanitizedOverrideHashes
-          : autoSelectFundingNotes(requiredAsset, requiredAmount);
+          : [];
         if (parsedOverrideHashes.length && !sanitizedOverrideHashes.length) {
           document.getElementById('ordFundingNote').value = '';
         }
@@ -4862,7 +4843,7 @@
           if (msg.includes('funding note already spent') && fundingNoteRaw) {
             await refreshNotesPortfolio();
             document.getElementById('ordFundingNote').value = '';
-            payload.fundingNoteHashes = autoSelectFundingNotes(requiredAsset, requiredAmount);
+            payload.fundingNoteHashes = [];
             payload.orderAuthorization = await createOrderAuthorization({
               wallet,
               market,
