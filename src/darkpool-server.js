@@ -249,7 +249,9 @@ const OPERATOR_PANEL_ADMIN_KEY = String(process.env.OPERATOR_PANEL_ADMIN_KEY || 
 const SETTLEMENT_REQUIRE_ONCHAIN_PAYOUTS =
   String(process.env.SETTLEMENT_REQUIRE_ONCHAIN_PAYOUTS || 'true').toLowerCase() === 'true';
 const SEQUENCER_PUBLIC_KEY = OPERATOR_PUBLIC_KEY || VAULT_DEPOSIT_ADDRESS || '';
-const SETTLEMENT_PAYOUT_COMMAND = String(process.env.SETTLEMENT_PAYOUT_COMMAND || '').trim();
+const SETTLEMENT_PAYOUT_COMMAND = String(
+  process.env.SETTLEMENT_PAYOUT_COMMAND || 'node scripts/settlement-payout-executor.js'
+).trim();
 const SETTLEMENT_BATCH_MAX_TRADES = Math.max(1, Number.parseInt(process.env.SETTLEMENT_BATCH_MAX_TRADES || '8', 10) || 8);
 const SETTLEMENT_BATCH_MAX_DELAY_MS = Math.max(
   0,
@@ -4144,6 +4146,93 @@ async function submitOnchainWithdrawalPayout({ withdrawalId, accountId, wallet, 
   return await runJsonCommand(SETTLEMENT_PAYOUT_COMMAND, { batch: syntheticBatch });
 }
 
+async function finalizeWithdrawalPayout(withdrawalRecord, payout) {
+  if (!withdrawalRecord) {
+    throw new Error('withdrawal record is required');
+  }
+  if (withdrawalRecord.status === 'submitted') {
+    return {
+      withdrawalRecord,
+      consumedFundingNotes: Array.isArray(withdrawalRecord.consumedFundingNotes)
+        ? withdrawalRecord.consumedFundingNotes
+        : [],
+      issuedNotes: []
+    };
+  }
+  const payoutTxs = Array.isArray(payout?.payoutTxs) ? payout.payoutTxs : [];
+  const txHash = payoutTxs[0]?.txHash || null;
+  if (!txHash) throw new Error('payout executor returned no transaction hash');
+
+  const nowUnixMs = now();
+  const consumedFundingNotes = [];
+  const issuedNotes = [];
+  for (const entry of Array.isArray(withdrawalRecord.consumedFundingNotes)
+    ? withdrawalRecord.consumedFundingNotes
+    : []) {
+    const note = notes.get(entry.noteHash);
+    if (!note) throw new Error(`withdrawal note ${entry.noteHash} is missing from state`);
+    const noteAssetKey = canonicalAssetKey(entry.asset || note.asset);
+    const alreadyJournaled = privateStateJournal.some(
+      (journalEntry) => journalEntry?.kind === 'note_spend' && journalEntry?.noteHash === entry.noteHash
+    );
+    if (!alreadyJournaled) {
+      appendPrivateStateJournalEntry({
+        kind: 'note_spend',
+        noteHash: entry.noteHash,
+        asset: note.asset,
+        amount: Number(note.amount || entry.originalAmount || 0),
+        createdAtUnixMs: note.createdAtUnixMs,
+        ownerAccountId: note.ownerAccountId || withdrawalRecord.accountId,
+        spentAtUnixMs: note.spentAtUnixMs || nowUnixMs,
+        nullifier: entry.nullifier || note.spentNullifier,
+        reason: 'withdrawal',
+        orderId: null
+      });
+    }
+    let changeNote = null;
+    if (Number(entry.changeAmount || 0) > 1e-9 && !entry.changeNoteHash) {
+      changeNote = issueNote(noteAssetKey, Number(entry.changeAmount), 'withdraw_note_change', null, withdrawalRecord.accountId);
+      if (changeNote) entry.changeNoteHash = changeNote.noteHash;
+    }
+    if (changeNote) issuedNotes.push(changeNote);
+    consumedFundingNotes.push({
+      noteHash: entry.noteHash,
+      asset: note.asset,
+      originalAmount: Number(entry.originalAmount || note.amount || 0),
+      consumedAmount: Number(entry.consumedAmount || 0),
+      changeAmount: Number(entry.changeAmount || 0),
+      nullifier: entry.nullifier || note.spentNullifier
+    });
+  }
+
+  withdrawalRecord.status = 'submitted';
+  withdrawalRecord.txHash = txHash;
+  withdrawalRecord.payoutTxs = payoutTxs;
+  withdrawalRecord.submittedAtUnixMs = nowUnixMs;
+  withdrawalRecord.lastError = null;
+  logActivity(withdrawalRecord.accountId, 'note_withdrawn', {
+    asset: withdrawalRecord.asset,
+    amount: withdrawalRecord.amount,
+    recipient: withdrawalRecord.wallet,
+    txHash
+  });
+  for (const entry of consumedFundingNotes) {
+    logActivity(withdrawalRecord.accountId, 'note_spent_for_withdrawal', {
+      asset: entry.asset,
+      noteHash: entry.noteHash,
+      consumedAmount: entry.consumedAmount,
+      changeAmount: entry.changeAmount,
+      nullifier: entry.nullifier,
+      recipient: withdrawalRecord.wallet,
+      txHash
+    });
+  }
+  await ensurePrivateStateBatch('withdrawal', withdrawalRecord.accountId);
+  scheduleParticipantOnchainResync(withdrawalRecord.accountId, withdrawalRecord.wallet, 'withdrawal');
+  await persistEngineState();
+  return { withdrawalRecord, consumedFundingNotes, issuedNotes };
+}
+
 async function withdrawNoteCollateral({ accountId, wallet, asset, amount, fundingNoteHashes = [] }) {
   const canonicalAsset = canonicalAssetKey(asset);
   const numericAmount = Number(amount || 0);
@@ -4216,71 +4305,17 @@ async function withdrawNoteCollateral({ accountId, wallet, asset, amount, fundin
       tokenId: assetConfig.tokenId,
       amount: Number(numericAmount.toFixed(9))
     });
-    const payoutTxs = Array.isArray(payout?.payoutTxs) ? payout.payoutTxs : [];
-    const txHash = payoutTxs[0]?.txHash || null;
-    const consumedFundingNotes = [];
-    const issuedNotes = [];
-    for (const item of staged) {
-      const noteAssetKey = canonicalAssetKey(item.note.asset);
-      appendPrivateStateJournalEntry({
-        kind: 'note_spend',
-        noteHash: item.note.noteHash,
-        asset: item.note.asset,
-        amount: item.fullAmount,
-        createdAtUnixMs: item.note.createdAtUnixMs,
-        ownerAccountId: item.note.ownerAccountId || accountId,
-        spentAtUnixMs: nowUnixMs,
-        nullifier: item.nullifier,
-        reason: 'withdrawal',
-        orderId: null
-      });
-      if (item.changeAmount > 1e-9) {
-        const changeNote = issueNote(noteAssetKey, item.changeAmount, 'withdraw_note_change', null, accountId);
-        if (changeNote) issuedNotes.push(changeNote);
-      }
-      consumedFundingNotes.push({
-        noteHash: item.note.noteHash,
-        asset: item.note.asset,
-        originalAmount: item.fullAmount,
-        consumedAmount: Number(item.consumeAmount.toFixed(9)),
-        changeAmount: item.changeAmount > 1e-9 ? item.changeAmount : 0,
-        nullifier: item.nullifier
-      });
-    }
-    withdrawalRecord.status = 'submitted';
-    withdrawalRecord.txHash = txHash;
-    withdrawalRecord.payoutTxs = payoutTxs;
-    withdrawalRecord.submittedAtUnixMs = now();
-    logActivity(accountId, 'note_withdrawn', {
-      asset: canonicalAsset,
-      amount: Number(numericAmount.toFixed(9)),
-      recipient: wallet,
-      txHash
-    });
-    for (const entry of consumedFundingNotes) {
-      logActivity(accountId, 'note_spent_for_withdrawal', {
-        asset: entry.asset,
-        noteHash: entry.noteHash,
-        consumedAmount: entry.consumedAmount,
-        changeAmount: entry.changeAmount,
-        nullifier: entry.nullifier,
-        recipient: wallet,
-        txHash
-      });
-    }
-    await ensurePrivateStateBatch('withdrawal', accountId);
-    scheduleParticipantOnchainResync(accountId, wallet, 'withdrawal');
-    await persistEngineState();
+    const finalized = await finalizeWithdrawalPayout(withdrawalRecord, payout);
     return {
       ok: true,
       withdrawalId,
       wallet,
       asset: canonicalAsset,
       amount: Number(numericAmount.toFixed(9)),
-      txHash,
-      payoutTxs,
-      consumedFundingNotes,
-      issuedNotes,
+      txHash: finalized.withdrawalRecord.txHash,
+      payoutTxs: finalized.withdrawalRecord.payoutTxs,
+      consumedFundingNotes: finalized.consumedFundingNotes,
+      issuedNotes: finalized.issuedNotes,
       participantBalances: accountBalanceSnapshot(accountId)
     };
   } catch (error) {
@@ -6196,6 +6231,73 @@ async function main() {
           fundingNoteHashes
         });
         writeJson(res, 200, result);
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/internal/withdrawals/retry') {
+        requireInternalServiceAuth(req);
+        const body = await readJsonBody(req);
+        const withdrawalId = requireString(body.withdrawalId, 'withdrawalId');
+        const withdrawalRecord = withdrawals.find((entry) => entry.id === withdrawalId);
+        if (!withdrawalRecord) throw new Error('withdrawal not found');
+        if (withdrawalRecord.status === 'submitted') {
+          writeJson(res, 200, { ok: true, withdrawal: withdrawalRecord, alreadySubmitted: true });
+          return;
+        }
+        if (withdrawalRecord.status !== 'payout_pending') throw new Error('withdrawal is not pending payout');
+        const payout = await submitOnchainWithdrawalPayout({
+          withdrawalId: withdrawalRecord.id,
+          accountId: withdrawalRecord.accountId,
+          wallet: withdrawalRecord.wallet,
+          asset: withdrawalRecord.asset,
+          tokenId: getAssetConfig(withdrawalRecord.asset).tokenId,
+          amount: withdrawalRecord.amount
+        });
+        const finalized = await finalizeWithdrawalPayout(withdrawalRecord, payout);
+        writeJson(res, 200, {
+          ok: true,
+          withdrawal: finalized.withdrawalRecord,
+          consumedFundingNotes: finalized.consumedFundingNotes,
+          issuedNotes: finalized.issuedNotes
+        });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/internal/withdrawals/reconcile') {
+        requireInternalServiceAuth(req);
+        const body = await readJsonBody(req);
+        const withdrawalId = requireString(body.withdrawalId, 'withdrawalId');
+        const withdrawalRecord = withdrawals.find((entry) => entry.id === withdrawalId);
+        if (!withdrawalRecord) throw new Error('withdrawal not found');
+        if (withdrawalRecord.status === 'submitted') {
+          writeJson(res, 200, { ok: true, withdrawal: withdrawalRecord, alreadySubmitted: true });
+          return;
+        }
+        if (withdrawalRecord.status !== 'payout_pending') throw new Error('withdrawal is not pending payout');
+        const payoutTxs = Array.isArray(body.payoutTxs) ? body.payoutTxs : [];
+        if (payoutTxs.length !== 1 || !payoutTxs[0]?.txHash) {
+          throw new Error('exactly one payout tx hash is required');
+        }
+        withdrawalRecord.reconciliation = {
+          mode: 'operator-confirmed-executor-inclusion',
+          reconciledAtUnixMs: now(),
+          txHash: String(payoutTxs[0].txHash).trim()
+        };
+        recordAuditEvent('withdrawal_reconciled', {
+          withdrawalId,
+          asset: withdrawalRecord.asset,
+          amount: withdrawalRecord.amount,
+          wallet: withdrawalRecord.wallet,
+          txHash: withdrawalRecord.reconciliation.txHash,
+          mode: withdrawalRecord.reconciliation.mode
+        });
+        const finalized = await finalizeWithdrawalPayout(withdrawalRecord, { payoutTxs });
+        writeJson(res, 200, {
+          ok: true,
+          withdrawal: finalized.withdrawalRecord,
+          consumedFundingNotes: finalized.consumedFundingNotes,
+          issuedNotes: finalized.issuedNotes
+        });
         return;
       }
 

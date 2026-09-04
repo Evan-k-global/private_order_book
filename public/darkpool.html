@@ -4557,7 +4557,9 @@
             100,
             await createWalletAuthorization('account-read', 'activity', wallet)
           );
-          const withdrawals = mergeActivityWithLocal(wallet, activity.events || []).filter((ev) => ev.type === 'note_withdrawn');
+          const withdrawals = mergeActivityWithLocal(wallet, activity.events || []).filter(
+            (ev) => ev.type === 'note_withdrawn' && Boolean(ev?.details?.txHash)
+          );
           const latest = withdrawals[0];
           status.textContent = latest
             ? `${latest.details?.asset || '-'} ${fmtDisplayNumber(latest.details?.amount)} at ${fmtUtcTime(latest.createdAtUnixMs)}`
@@ -5393,13 +5395,12 @@
           });
           const authorization = await createWalletAuthorization('withdraw', 'withdraw', wallet, `${String(asset).toUpperCase()}:${amount}`);
           const result = await sdk.withdraw({ wallet, asset, amount, authorization });
-          rememberLocalActivity(wallet, [
-            makeLocalActivityEvent('note_withdrawn', {
-              asset,
-              amount,
-              txHash: result?.txHash || result?.payout?.txHash || null
-            })
-          ]);
+          const txHash = result?.txHash || result?.payout?.txHash || null;
+          if (result?.ok && !result?.pending && txHash) {
+            rememberLocalActivity(wallet, [
+              makeLocalActivityEvent('note_withdrawn', { asset, amount, txHash })
+            ]);
+          }
           setText('vaultOut', result);
           await refreshNotesPortfolio();
           await refreshNoteAssetOptions();
