@@ -2015,9 +2015,11 @@ async function validateWalletAuthorization({ scope, action, wallet, resourceId =
     'authorization.publicKey'
   );
   if (authWallet !== wallet) throw new Error('wallet authorization mismatch');
+  const reusableReadAuthorization = scope === 'account-read';
+  const expectedAction = reusableReadAuthorization ? 'wallet-read' : action;
   const expectedPayload = canonicalWalletAuthorizationPayload({
     scope,
-    action,
+    action: expectedAction,
     wallet,
     resourceId,
     nonce: authorization.nonce,
@@ -2027,12 +2029,12 @@ async function validateWalletAuthorization({ scope, action, wallet, resourceId =
   if (providedPayload !== expectedPayload) throw new Error('wallet authorization payload mismatch');
   const expiresAtUnixMs = Number.parseInt(String(authorization.expiresAtUnixMs || ''), 10);
   const currentNow = now();
-  if (!Number.isFinite(expiresAtUnixMs) || expiresAtUnixMs < currentNow || expiresAtUnixMs > currentNow + 5 * 60 * 1000) {
+  const maxAuthorizationAgeMs = reusableReadAuthorization ? 8 * 60 * 60 * 1000 : 5 * 60 * 1000;
+  if (!Number.isFinite(expiresAtUnixMs) || expiresAtUnixMs < currentNow || expiresAtUnixMs > currentNow + maxAuthorizationAgeMs) {
     throw new Error('wallet authorization expiry is invalid');
   }
   const nonce = requireString(authorization.nonce, 'authorization.nonce');
   const nonceKey = `${scope}:${nonce}`;
-  const reusableReadAuthorization = scope === 'account-read';
   if (!reusableReadAuthorization) {
     pruneExpiredOrderAuthNonces(currentNow);
     if (usedOrderAuthNonces.has(nonceKey)) throw new Error('wallet authorization nonce already used');

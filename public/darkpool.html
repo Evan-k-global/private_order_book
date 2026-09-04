@@ -1951,6 +1951,8 @@
       let autoAuroSyncInFlight = false;
       const walletReadAuthorizationCache = new Map();
       const walletReadAuthorizationInFlight = new Map();
+      const WALLET_READ_AUTH_EXPIRY_MS = 8 * 60 * 60 * 1000;
+      const WALLET_READ_AUTH_SESSION_PREFIX = 'shadowbook.wallet-read.v1.';
       let activeDepositIntentId = '';
       let pendingTokenTransfer = null;
       const sepoliaWalletNetwork = {
@@ -2897,7 +2899,7 @@
         try {
           const portfolio = await sdk.getNotesPortfolio(
             pending.wallet,
-            await createWalletAuthorization('account-read', 'portfolio', pending.wallet)
+            await createWalletAuthorization('account-read', 'wallet-read', pending.wallet)
           );
           const existing = Number(portfolio?.outstandingByAsset?.[String(pending.asset).toUpperCase()] || 0);
           if (existing + 1e-9 >= Number(pending.amount || 0)) {
@@ -2997,7 +2999,7 @@
         try {
           const data = await sdk.getNotesPortfolio(
             wallet,
-            await createWalletAuthorization('account-read', 'portfolio', wallet)
+            await createWalletAuthorization('account-read', 'wallet-read', wallet)
           );
           latestNotesPortfolio = data;
           const walletTotals = data?.onchainTotals || {};
@@ -3303,11 +3305,18 @@
         if (isReusableRead) {
           const cached = walletReadAuthorizationCache.get(cacheKey);
           if (cached && Number(cached.expiresAtUnixMs || 0) > Date.now() + 15000) return cached;
+          try {
+            const stored = JSON.parse(sessionStorage.getItem(`${WALLET_READ_AUTH_SESSION_PREFIX}${cacheKey}`) || 'null');
+            if (stored && Number(stored.expiresAtUnixMs || 0) > Date.now() + 15000) {
+              walletReadAuthorizationCache.set(cacheKey, stored);
+              return stored;
+            }
+          } catch {}
           const inFlight = walletReadAuthorizationInFlight.get(cacheKey);
           if (inFlight) return inFlight;
         }
         const nonce = `${scope}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
-        const expiresAtUnixMs = Date.now() + 5 * 60 * 1000;
+        const expiresAtUnixMs = Date.now() + (isReusableRead ? WALLET_READ_AUTH_EXPIRY_MS : 5 * 60 * 1000);
         const payload = stableStringify({ scope, action, wallet, resourceId, nonce, expiresAtUnixMs });
         const request = (async () => {
           const signed = await signMessageWithWallet(payload, wallet);
@@ -3319,7 +3328,12 @@
             signature: signed.signature,
             method: signed.method
           };
-          if (isReusableRead) walletReadAuthorizationCache.set(cacheKey, authorization);
+          if (isReusableRead) {
+            walletReadAuthorizationCache.set(cacheKey, authorization);
+            try {
+              sessionStorage.setItem(`${WALLET_READ_AUTH_SESSION_PREFIX}${cacheKey}`, JSON.stringify(authorization));
+            } catch {}
+          }
           return authorization;
         })();
         if (isReusableRead) walletReadAuthorizationInFlight.set(cacheKey, request);
@@ -4584,7 +4598,7 @@
           const activity = await sdk.getActivity(
             wallet,
             100,
-            await createWalletAuthorization('account-read', 'activity', wallet)
+            await createWalletAuthorization('account-read', 'wallet-read', wallet)
           );
           const withdrawals = mergeActivityWithLocal(wallet, activity.events || []).filter(
             (ev) => ev.type === 'note_withdrawn' && Boolean(ev?.details?.txHash)
@@ -4669,7 +4683,7 @@
         const data = await sdk.getActivity(
           wallet,
           limit,
-          await createWalletAuthorization('account-read', 'activity', wallet)
+          await createWalletAuthorization('account-read', 'wallet-read', wallet)
         );
         renderActivity(mergeActivityWithLocal(wallet, data.events || []), data.openOrders || [], {
           openOnly: view === 'open'
