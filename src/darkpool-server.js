@@ -3745,6 +3745,17 @@ function notePortfolioForAccount(accountId) {
         asset: n.asset,
         amount: n.amount,
         createdAtUnixMs: n.createdAtUnixMs
+      })),
+    pendingWithdrawals: withdrawals
+      .filter((entry) => entry?.accountId === accountId && entry?.status === 'payout_pending')
+      .sort((a, b) => Number(b.createdAtUnixMs || 0) - Number(a.createdAtUnixMs || 0))
+      .slice(0, 20)
+      .map((entry) => ({
+        id: entry.id,
+        asset: entry.asset,
+        amount: entry.amount,
+        createdAtUnixMs: entry.createdAtUnixMs,
+        lastAttemptAtUnixMs: entry.lastAttemptAtUnixMs || null
       }))
   };
 }
@@ -6231,6 +6242,46 @@ async function main() {
           fundingNoteHashes
         });
         writeJson(res, 200, result);
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/api/darkpool/vault/withdraw/retry') {
+        const body = await readJsonBody(req);
+        const accountId = deriveBlindedAccountId({ wallet: body.wallet });
+        const linkedWallet = getLinkedWalletForParticipant(accountId);
+        const withdrawalId = requireString(body.withdrawalId, 'withdrawalId');
+        const withdrawalRecord = withdrawals.find((entry) => entry.id === withdrawalId && entry.accountId === accountId);
+        if (!withdrawalRecord) throw new Error('pending withdrawal not found for this wallet');
+        if (withdrawalRecord.status === 'submitted') {
+          writeJson(res, 200, { ok: true, withdrawal: withdrawalRecord, alreadySubmitted: true });
+          return;
+        }
+        if (withdrawalRecord.status !== 'payout_pending') throw new Error('withdrawal is not pending payout');
+        await validateWalletAuthorization({
+          scope: 'withdraw',
+          action: 'withdraw-retry',
+          wallet: linkedWallet,
+          resourceId: `withdrawal:${withdrawalId}`,
+          authorization: body.authorization
+        });
+        const payout = await submitOnchainWithdrawalPayout({
+          withdrawalId: withdrawalRecord.id,
+          accountId: withdrawalRecord.accountId,
+          wallet: withdrawalRecord.wallet,
+          asset: withdrawalRecord.asset,
+          tokenId: getAssetConfig(withdrawalRecord.asset).tokenId,
+          amount: withdrawalRecord.amount
+        });
+        const finalized = await finalizeWithdrawalPayout(withdrawalRecord, payout);
+        writeJson(res, 200, {
+          ok: true,
+          withdrawalId,
+          txHash: finalized.withdrawalRecord.txHash,
+          payoutTxs: finalized.withdrawalRecord.payoutTxs,
+          withdrawal: finalized.withdrawalRecord,
+          consumedFundingNotes: finalized.consumedFundingNotes,
+          issuedNotes: finalized.issuedNotes
+        });
         return;
       }
 

@@ -1843,6 +1843,7 @@
               <div id="withdrawHistory" class="withdraw-history">
                 <div class="withdraw-empty">Withdrawals will appear here after you redeem private collateral back to your wallet.</div>
               </div>
+              <div id="pendingWithdrawals" class="withdraw-history" hidden></div>
             </div>
             <details id="noteAdvanced" class="stack">
               <summary class="footnote mono">Advanced</summary>
@@ -4537,6 +4538,33 @@
         }).join('');
       }
 
+      function renderPendingWithdrawals(pendingWithdrawals) {
+        const root = document.getElementById('pendingWithdrawals');
+        if (!root) return;
+        const pending = Array.isArray(pendingWithdrawals) ? pendingWithdrawals : [];
+        root.hidden = pending.length === 0;
+        root.innerHTML = pending.map((withdrawal) => `
+          <div class="withdraw-row">
+            <div class="mono">Payout pending</div>
+            <div class="mono">${formatDisplayAsset(withdrawal.asset || '-')}</div>
+            <div class="mono">${fmtDisplayNumber(withdrawal.amount)}</div>
+            <div><button type="button" class="ghost retry-pending-withdrawal" data-withdrawal-id="${withdrawal.id}" style="width:auto;padding:3px 8px;">Retry payout</button></div>
+          </div>
+        `).join('');
+        for (const button of root.querySelectorAll('.retry-pending-withdrawal')) {
+          button.onclick = async () => {
+            try {
+              button.disabled = true;
+              await retryPendingWithdrawal(button.dataset.withdrawalId);
+            } catch (error) {
+              setText('vaultOut', String(error?.message || error));
+            } finally {
+              button.disabled = false;
+            }
+          };
+        }
+      }
+
       async function refreshWithdrawPanel() {
         const wallet = document.getElementById('noteWallet')?.value?.trim();
         const asset = document.getElementById('noteAsset')?.value?.trim();
@@ -4546,6 +4574,7 @@
         const outstanding = latestNotesPortfolio?.outstandingByAsset || {};
         const total = Number(outstanding[String(asset || '').toUpperCase()] || 0);
         summary.textContent = asset ? `${asset}: ${fmtDisplayNumber(total)}` : 'Select an asset';
+        renderPendingWithdrawals(latestNotesPortfolio?.pendingWithdrawals || []);
         if (!wallet) {
           status.textContent = 'Enter a wallet to view withdrawals';
           renderWithdrawHistory([]);
@@ -5413,6 +5442,44 @@
           }
         } catch (e) {
           setText('vaultOut', String(e));
+        } finally {
+          setWithdrawBusyState(false);
+        }
+      }
+
+      async function retryPendingWithdrawal(withdrawalId) {
+        const wallet = document.getElementById('noteWallet').value.trim();
+        const pending = Array.isArray(latestNotesPortfolio?.pendingWithdrawals)
+          ? latestNotesPortfolio.pendingWithdrawals.find((entry) => entry.id === withdrawalId)
+          : null;
+        if (!wallet || !pending) throw new Error('pending withdrawal is no longer available; refresh your wallet state');
+        setWithdrawBusyState(true);
+        try {
+          setText('vaultOut', {
+            ok: true,
+            pending: true,
+            message: `Retrying the existing ${fmtDisplayNumber(pending.amount)} ${formatDisplayAsset(pending.asset)} payout. No new notes will be consumed.`
+          });
+          const result = await sdk.retryWithdraw({
+            wallet,
+            withdrawalId,
+            authorization: await createWalletAuthorization('withdraw', 'withdraw-retry', wallet, `withdrawal:${withdrawalId}`)
+          });
+          const txHash = result?.txHash || result?.payout?.txHash || null;
+          if (result?.ok && txHash) {
+            rememberLocalActivity(wallet, [
+              makeLocalActivityEvent('note_withdrawn', {
+                asset: pending.asset,
+                amount: pending.amount,
+                txHash
+              })
+            ]);
+          }
+          setText('vaultOut', result);
+          await refreshNotesPortfolio();
+          await refreshNoteAssetOptions();
+          await refreshActivity();
+          if (wallet) await syncWalletContext(wallet);
         } finally {
           setWithdrawBusyState(false);
         }

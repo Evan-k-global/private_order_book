@@ -185,6 +185,10 @@
     return this.request('/api/darkpool/vault/withdraw', { method: 'POST', body: payload });
   };
 
+  ShadowBookClient.prototype.retryWithdraw = function retryWithdraw(payload) {
+    return this.request('/api/darkpool/vault/withdraw/retry', { method: 'POST', body: payload });
+  };
+
   ShadowBookClient.prototype.claimFaucet = function claimFaucet(payload) {
     return this.request('/api/darkpool/faucet/claim', { method: 'POST', body: payload });
   };
