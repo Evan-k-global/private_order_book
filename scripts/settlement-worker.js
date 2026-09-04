@@ -170,6 +170,13 @@ async function commitLoop() {
         continue;
       }
 
+      const status = await request('/api/darkpool/status');
+      if (status?.server?.realFundsMode && status?.settlement?.realFundsSettlementEnabled === false) {
+        console.log(`[settlement-worker] settlement paused: ${status.settlement.blockedReason}`);
+        await new Promise((r) => setTimeout(r, Math.max(1000, INTERVAL_MS)));
+        continue;
+      }
+
       if (MODE === 'local') {
         const committed = await request('/api/darkpool/settlement/commit-next-local', { method: 'POST' });
         if (committed?.committed?.batchId) {

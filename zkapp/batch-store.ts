@@ -27,6 +27,11 @@ export type StoredSettlementBatch = {
   createdAtUnixMs: number;
   committedAtUnixMs: number | null;
   txHash: string | null;
+  submission?: {
+    txHash: string;
+    onchainBatchId: string;
+    submittedAtUnixMs: number;
+  } | null;
 };
 
 export type SettlementBatchFile = {

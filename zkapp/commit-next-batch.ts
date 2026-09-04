@@ -135,6 +135,21 @@ export async function commitNextPendingBatch() {
     return;
   }
 
+  // Keep a submitted transaction retryable until the server acknowledges it.
+  // This prevents a failed API reconciliation from making the batch disappear.
+  if (pending.submission?.txHash) {
+    return {
+      ok: true,
+      localBatchId: pending.batchId,
+      onchainBatchId: pending.submission.onchainBatchId,
+      batchHash: pending.batchHash,
+      privateStateTransitionHash: pending.privateStateTransitionHash || null,
+      txHash: pending.submission.txHash,
+      status: 'submitted',
+      alreadySubmitted: true
+    };
+  }
+
   const batchHash = hashHexToField(pending.batchHash);
   const bookRoot = hashHexToField(String(pending.bookRootHash || pending.batchHash));
   const sequencingRoot = hashHexToField(String(pending.sequencingRootHash || pending.batchHash));
@@ -239,12 +254,15 @@ export async function commitNextPendingBatch() {
   await tx.prove();
   tx.sign([deployerKey, zkappKey]);
   const sent = await tx.send();
+  if (!sent?.hash) throw new Error(`settlement transaction did not return a hash for batch ${pending.batchId}`);
 
   const target = batchFile.batches.find((batch) => batch.batchId === pending.batchId);
   if (target) {
-    target.status = 'committed';
-    target.committedAtUnixMs = Date.now();
-    target.txHash = sent.hash ?? null;
+    target.submission = {
+      txHash: sent.hash,
+      onchainBatchId: nextOnchainBatchId.toString(),
+      submittedAtUnixMs: Date.now()
+    };
   }
   await saveBatchFile(batchPath, batchFile);
 

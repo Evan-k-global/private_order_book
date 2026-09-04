@@ -1264,7 +1264,15 @@ function isMissingGraphqlFieldError(errorText) {
 function assertCanonicalAppliedTx(tx, kind) {
   const status = String(tx?.status || tx?.transactionStatus || '').trim().toLowerCase();
   const failure = tx?.failureReason || tx?.failure || tx?.failures || null;
-  if (failure || ['failed', 'failure', 'rejected', 'pending', 'unknown'].includes(status)) {
+  const canonical = tx?.canonical;
+  const canonicalKnown = canonical !== undefined && canonical !== null;
+  const canonicalApplied = canonical === true || String(canonical).toLowerCase() === 'true';
+  const appliedStatuses = new Set(['applied', 'included', 'confirmed', 'canonical', 'success', 'succeeded', 'completed']);
+  if (
+    failure ||
+    ['failed', 'failure', 'rejected', 'pending', 'unknown'].includes(status) ||
+    (canonicalKnown ? !canonicalApplied : !appliedStatuses.has(status))
+  ) {
     throw new Error(`${kind} tx is not a canonical applied transaction`);
   }
 }
@@ -1307,7 +1315,7 @@ async function verifyOnchainDepositTx({ txHash, wallet, asset, tokenId, amount }
   if (!from || !to) throw new Error('deposit tx missing from/to fields');
   if (from !== wallet) throw new Error(`deposit tx sender mismatch: expected ${wallet}, got ${from}`);
   if (to !== VAULT_DEPOSIT_ADDRESS) throw new Error(`deposit tx recipient mismatch: expected ${VAULT_DEPOSIT_ADDRESS}, got ${to}`);
-  if (tokenId && token && token !== tokenId) throw new Error(`deposit tx token mismatch: expected ${tokenId}, got ${token}`);
+  if (tokenId && token !== tokenId) throw new Error(`deposit tx token mismatch: expected ${tokenId}, got ${token || 'missing'}`);
   if (!/^\d+$/.test(rawAmount) || BigInt(rawAmount) < expectedRawAmount) {
     throw new Error(`deposit tx amount too low: ${rawAmount || 'invalid'} < required raw ${expectedRawAmount}`);
   }
@@ -1348,7 +1356,7 @@ async function findLatestEligibleDepositTx({ wallet, tokenId, amount }) {
     if (usedDepositTxHashes.has(txHash)) continue;
     if (from !== wallet) continue;
     if (to !== VAULT_DEPOSIT_ADDRESS) continue;
-    if (tokenId && token && token !== tokenId) continue;
+    if (tokenId && token !== tokenId) continue;
     if (!Number.isFinite(txAmount) || txAmount + 1e-9 < amount) continue;
     const txUnixMs = parseTxUnixMs(tx) || 0;
     candidates.push({ txHash, txAmount, txUnixMs, tx });
@@ -1478,7 +1486,7 @@ async function verifyOnchainPayoutTx({ txHash, wallet, asset, tokenId, amount })
   if (!from || !to) throw new Error('payout tx missing from/to fields');
   if (from !== VAULT_DEPOSIT_ADDRESS) throw new Error(`payout tx sender mismatch: expected ${VAULT_DEPOSIT_ADDRESS}, got ${from}`);
   if (to !== wallet) throw new Error(`payout tx recipient mismatch: expected ${wallet}, got ${to}`);
-  if (tokenId && token && token !== tokenId) throw new Error(`payout tx token mismatch: expected ${tokenId}, got ${token}`);
+  if (tokenId && token !== tokenId) throw new Error(`payout tx token mismatch: expected ${tokenId}, got ${token || 'missing'}`);
   if (!/^\d+$/.test(rawAmount) || BigInt(rawAmount) < expectedRawAmount) {
     throw new Error(`payout tx amount too low: ${rawAmount || 'invalid'} < required raw ${expectedRawAmount}`);
   }
@@ -1932,6 +1940,7 @@ function canonicalOperatorAuthorizationPayload(payload) {
     scope: 'operator-panel',
     action: requireString(payload.action, 'action'),
     wallet: requireString(payload.wallet, 'wallet'),
+    resourceId: payload.resourceId ? requireString(payload.resourceId, 'resourceId') : null,
     nonce: requireString(payload.nonce, 'nonce'),
     expiresAtUnixMs: Number.parseInt(String(payload.expiresAtUnixMs || ''), 10)
   });
@@ -2176,7 +2185,7 @@ function pruneExpiredOperatorAuthNonces(currentNow = now()) {
   }
 }
 
-async function validateOperatorPanelAuthorization(action, authorization) {
+async function validateOperatorPanelAuthorization(action, authorization, resourceId = null) {
   if (!authorization || typeof authorization !== 'object') {
     throw new Error('operator authorization is required');
   }
@@ -2190,6 +2199,7 @@ async function validateOperatorPanelAuthorization(action, authorization) {
   const expectedPayload = canonicalOperatorAuthorizationPayload({
     action,
     wallet: authWallet,
+    resourceId,
     nonce: authorization.nonce,
     expiresAtUnixMs: authorization.expiresAtUnixMs
   });
@@ -2705,7 +2715,8 @@ function engineStateSnapshot() {
     depositClaims: Object.fromEntries(depositClaims.entries()),
     usedDepositTxHashes: Array.from(usedDepositTxHashes.values()),
     usedSettlementPayoutTxHashes: Array.from(usedSettlementPayoutTxHashes.values()),
-    usedWalletAuthorizationNonces: Array.from(usedOrderAuthNonces.entries())
+    usedWalletAuthorizationNonces: Array.from(usedOrderAuthNonces.entries()),
+    usedOperatorAuthorizationNonces: Array.from(usedOperatorAuthNonces.entries())
   };
 }
 
@@ -2745,6 +2756,9 @@ async function loadEngineState() {
       : [];
     const loadedWalletAuthorizationNonces = Array.isArray(state.usedWalletAuthorizationNonces)
       ? state.usedWalletAuthorizationNonces
+      : [];
+    const loadedOperatorAuthorizationNonces = Array.isArray(state.usedOperatorAuthorizationNonces)
+      ? state.usedOperatorAuthorizationNonces
       : [];
 
     accounts.clear();
@@ -2821,6 +2835,11 @@ async function loadEngineState() {
     for (const entry of loadedWalletAuthorizationNonces) {
       if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Number.isFinite(Number(entry[1]))) continue;
       if (Number(entry[1]) >= now()) usedOrderAuthNonces.set(entry[0], Number(entry[1]));
+    }
+    usedOperatorAuthNonces.clear();
+    for (const entry of loadedOperatorAuthorizationNonces) {
+      if (!Array.isArray(entry) || typeof entry[0] !== 'string' || !Number.isFinite(Number(entry[1]))) continue;
+      if (Number(entry[1]) >= now()) usedOperatorAuthNonces.set(entry[0], Number(entry[1]));
     }
 
     orders.clear();
@@ -4519,13 +4538,16 @@ async function validateOperatorPanelAccess(body, action) {
   const adminKey = String(body?.adminKey || '').trim();
   if (OPERATOR_PANEL_ADMIN_KEY) {
     if (!adminKey) throw new Error('operator admin key is required');
-    if (adminKey !== OPERATOR_PANEL_ADMIN_KEY) throw new Error('operator admin key is invalid');
+    if (!constantTimeSecretEquals(adminKey, OPERATOR_PANEL_ADMIN_KEY)) throw new Error('operator admin key is invalid');
     return { mode: 'admin-key' };
   }
   if (!OPERATOR_PANEL_ALLOWED_WALLET) {
     throw new Error('operator panel is not configured');
   }
-  return validateOperatorPanelAuthorization(action, body?.authorization);
+  const resourceId = action === 'reference-update'
+    ? `${String(body?.marketId || body?.pair || '').trim()}:${String(body?.referencePrice || '').trim()}`
+    : null;
+  return validateOperatorPanelAuthorization(action, body?.authorization, resourceId);
 }
 
 function computeStatusSnapshot(port) {
@@ -4625,6 +4647,11 @@ function computeStatusSnapshot(port) {
     settlement: {
       pendingSettlementCount,
       committedSettlementCount,
+      realFundsSettlementEnabled: !REAL_FUNDS_MODE || PRIVATE_STATE_CONSERVATION_PROOF_IMPLEMENTED,
+      blockedReason:
+        REAL_FUNDS_MODE && !PRIVATE_STATE_CONSERVATION_PROOF_IMPLEMENTED
+          ? 'real-funds settlement requires a private-state conservation proof'
+          : null,
       pendingPayoutBatches: settlementBatches.filter(
         (b) => b.status === 'pending' && b.batchType === 'trade_settlement' && Array.isArray(b.payouts) && b.payouts.length > 0
       ).length,
