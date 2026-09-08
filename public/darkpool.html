@@ -1191,6 +1191,49 @@
         letter-spacing: 0.04em;
         white-space: nowrap;
       }
+      .network-wallet-wrap {
+        position: relative;
+      }
+      .network-wallet-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        cursor: pointer;
+        background: rgba(8, 21, 37, 0.82);
+      }
+      .network-wallet-trigger:hover,
+      .network-wallet-trigger:focus-visible {
+        border-color: #41749a;
+        color: #d7fbff;
+        outline: none;
+      }
+      .network-wallet-trigger.connected {
+        border-color: #2f6e63;
+      }
+      .network-wallet-chevron {
+        font-size: 10px;
+        color: #70d7de;
+      }
+      .network-wallet-menu {
+        right: 0;
+        left: auto;
+        width: 256px;
+      }
+      .network-wallet-status {
+        display: grid;
+        gap: 3px;
+        padding: 7px 8px 9px;
+        border-bottom: 1px solid #1d3d58;
+        color: #99b6ce;
+        font-size: 11px;
+      }
+      .network-wallet-status strong {
+        color: #d7fbff;
+        font-size: 12px;
+      }
+      .network-wallet-status span {
+        overflow-wrap: anywhere;
+      }
       .wallet-btn {
         width: auto;
         padding: 6px 12px;
@@ -1523,7 +1566,19 @@
         </div>
       </div>
       <div class="header-actions">
-        <div class="network-badge">Zeko Ethereum Sepolia</div>
+        <div class="network-wallet-wrap">
+          <button type="button" id="networkWalletMenuBtn" class="network-badge network-wallet-trigger" aria-haspopup="menu" aria-expanded="false">
+            <span>Zeko Ethereum Sepolia</span><span class="network-wallet-chevron">▾</span>
+          </button>
+          <div id="networkWalletMenu" class="wallet-menu network-wallet-menu" role="menu" hidden>
+            <div class="network-wallet-status">
+              <strong id="networkWalletProviderStatus">No wallet connected</strong>
+              <span id="networkWalletAddressStatus">Choose a wallet to connect.</span>
+            </div>
+            <button type="button" role="menuitem" id="switchAuroWalletBtn">Connect Auro</button>
+            <button type="button" role="menuitem" id="switchMetaMaskWalletBtn">Connect MetaMask (Flask)</button>
+          </div>
+        </div>
       </div>
     </div>
     <div id="tradingPanel" class="app">
@@ -2171,6 +2226,7 @@
         const canAdopt = force || walletConnected || currentIsEmpty || current === activeWallet;
         if (!canAdopt) return false;
         const changed = wallet !== activeWallet || current !== wallet;
+        if (!activeWalletProvider) activeWalletProvider = 'auro';
         activeWallet = wallet;
         walletConnected = true;
         if (current !== wallet) setWalletFields(wallet);
@@ -3502,6 +3558,11 @@
 
       function updateWalletButtonState() {
         const btn = document.getElementById('globalConnectWalletBtn');
+        const networkTrigger = document.getElementById('networkWalletMenuBtn');
+        const networkProviderStatus = document.getElementById('networkWalletProviderStatus');
+        const networkAddressStatus = document.getElementById('networkWalletAddressStatus');
+        const activeProviderLabel = activeWalletProvider === 'metamask' ? 'MetaMask Flask' : activeWalletProvider === 'auro' ? 'Auro' : 'Wallet';
+        const activeAddress = String(activeWallet || document.getElementById('ordWallet')?.value || '').trim();
         const transferSignButton = document.getElementById('signTokenTransferBtn');
         if (transferSignButton) {
           transferSignButton.textContent =
@@ -3518,13 +3579,25 @@
           btn.classList.remove('connected');
           btn.disabled = false;
           btn.title = '';
+          if (networkTrigger) {
+            networkTrigger.classList.remove('connected');
+            networkTrigger.title = 'Choose a wallet';
+          }
+          if (networkProviderStatus) networkProviderStatus.textContent = 'No wallet connected';
+          if (networkAddressStatus) networkAddressStatus.textContent = 'Choose a wallet to connect.';
           return;
         }
         btn.hidden = true;
-        const w = String(document.getElementById('ordWallet')?.value || '').trim();
+        const w = activeAddress;
         btn.classList.add('connected');
         btn.disabled = false;
         btn.title = w || '';
+        if (networkTrigger) {
+          networkTrigger.classList.add('connected');
+          networkTrigger.title = `${activeProviderLabel}: ${w}`;
+        }
+        if (networkProviderStatus) networkProviderStatus.textContent = `${activeProviderLabel} connected`;
+        if (networkAddressStatus) networkAddressStatus.textContent = w || 'Address unavailable';
       }
 
       function dismissWelcomeOverlay() {
@@ -5262,17 +5335,32 @@
         if (menu) menu.hidden = !open;
         document.getElementById('globalConnectWalletBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
       };
+      document.getElementById('networkWalletMenuBtn').onclick = () => {
+        const menu = document.getElementById('networkWalletMenu');
+        const open = Boolean(menu?.hidden);
+        if (menu) menu.hidden = !open;
+        document.getElementById('networkWalletMenuBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
+      };
       async function connectSelectedWallet(providerKind) {
-        const menu = document.getElementById('walletProviderMenu');
-        if (menu) menu.hidden = true;
+        for (const menuId of ['walletProviderMenu', 'networkWalletMenu']) {
+          const menu = document.getElementById(menuId);
+          if (menu) menu.hidden = true;
+        }
+        const previousWallet = activeWallet;
+        const previousProvider = activeWalletProvider;
         const trigger = document.getElementById('globalConnectWalletBtn');
+        const networkTrigger = document.getElementById('networkWalletMenuBtn');
         if (trigger) {
           trigger.disabled = true;
           trigger.textContent = providerKind === 'metamask' ? 'Connecting MetaMask...' : 'Connecting Auro...';
         }
+        if (networkTrigger) networkTrigger.disabled = true;
         try {
           await connectWallet(providerKind);
         } catch (error) {
+          activeWallet = previousWallet;
+          activeWalletProvider = previousProvider;
+          updateWalletButtonState();
           setText('orderOut', String(error));
         } finally {
           if (trigger) {
@@ -5280,10 +5368,16 @@
             trigger.textContent = 'Connect Wallet';
             trigger.setAttribute('aria-expanded', 'false');
           }
+          if (networkTrigger) {
+            networkTrigger.disabled = false;
+            networkTrigger.setAttribute('aria-expanded', 'false');
+          }
         }
       }
       document.getElementById('connectAuroWalletBtn').onclick = () => connectSelectedWallet('auro');
       document.getElementById('connectMetaMaskWalletBtn').onclick = () => connectSelectedWallet('metamask');
+      document.getElementById('switchAuroWalletBtn').onclick = () => connectSelectedWallet('auro');
+      document.getElementById('switchMetaMaskWalletBtn').onclick = () => connectSelectedWallet('metamask');
 
       document.getElementById('inspectBtn').onclick = async () => {
         try {
