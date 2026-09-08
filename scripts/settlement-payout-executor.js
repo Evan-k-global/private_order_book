@@ -10,7 +10,7 @@ import {
   UInt64
 } from 'o1js';
 import { FungibleToken } from 'mina-fungible-token';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const API_BASE = (process.env.DARKPOOL_API || 'http://127.0.0.1:8791').replace(/\/$/, '');
@@ -23,6 +23,9 @@ const FEE_PAYER_PRIVATE_KEY = String(process.env.PAYOUT_FEE_PAYER_PRIVATE_KEY ||
 const EXPECTED_VAULT_ADDRESS = String(process.env.VAULT_DEPOSIT_ADDRESS || '').trim();
 const PAYOUT_JOURNAL_FILE = path.resolve(
   process.env.PAYOUT_JOURNAL_FILE || path.join(process.env.DARKPOOL_DATA_DIR || 'data/zeko-sepolia', 'payout-journal.json')
+);
+const PAYOUT_EXECUTOR_LOCK_DIR = path.resolve(
+  process.env.PAYOUT_EXECUTOR_LOCK_DIR || `${PAYOUT_JOURNAL_FILE}.lock`
 );
 function normalizeAsset(asset) {
   return String(asset || '').trim().toUpperCase();
@@ -146,6 +149,20 @@ async function savePayoutJournal(journal) {
   await rename(temporary, PAYOUT_JOURNAL_FILE);
 }
 
+async function acquirePayoutExecutorLock() {
+  try {
+    await mkdir(PAYOUT_EXECUTOR_LOCK_DIR);
+  } catch (error) {
+    if (error?.code === 'EEXIST') {
+      throw new Error('another payout executor is already running; wait for it to finish before retrying');
+    }
+    throw error;
+  }
+  return async () => {
+    await rm(PAYOUT_EXECUTOR_LOCK_DIR, { recursive: true, force: true });
+  };
+}
+
 async function graphqlRequest(query, variables = {}) {
   const response = await fetch(ZEKO_GRAPHQL, {
     method: 'POST',
@@ -245,6 +262,9 @@ async function main() {
   if (!OPERATOR_PRIVATE_KEY) throw new Error('PAYOUT_OPERATOR_PRIVATE_KEY or DEPLOYER_PRIVATE_KEY is required');
   if (!FEE_PAYER_PRIVATE_KEY) throw new Error('PAYOUT_FEE_PAYER_PRIVATE_KEY is required');
 
+  const releaseLock = await acquirePayoutExecutorLock();
+  try {
+
   const stdin = await readStdinJson();
   const pending = stdin?.batch || (await getNextPendingBatch());
   if (!pending) {
@@ -297,6 +317,10 @@ async function main() {
     const tokenId = TokenId.fromBase58(tokenId58);
     const to = PublicKey.fromBase58(wallet);
     const rawAmount = decimalToRawUInt64(amount, decimals);
+    // Both keys can authorize this transaction. Refresh them before building
+    // so o1js does not carry an earlier account nonce into the proof.
+    await fetchAccount({ publicKey: feePayerPub });
+    await fetchAccount({ publicKey: operatorPub });
     const currentFeePayerNonce = await readAccountNonce(feePayerPub);
     if (currentFeePayerNonce === null) {
       throw new Error(`unable to read fee payer nonce for ${feePayerPub.toBase58()}`);
@@ -324,8 +348,6 @@ async function main() {
             const token = new FungibleToken(tokenAddress);
             if (!fungibleTokenCompilePromise) fungibleTokenCompilePromise = FungibleToken.compile();
             await fungibleTokenCompilePromise;
-            await fetchAccount({ publicKey: feePayerPub });
-            await fetchAccount({ publicKey: operatorPub });
             await fetchAccount({ publicKey: operatorPub, tokenId });
             const receiverNeedsTokenAccount = !(await doesOnchainTokenAccountExist(wallet, tokenId58));
             const builtTx = await Mina.transaction(
@@ -384,6 +406,9 @@ async function main() {
       2
     )
   );
+  } finally {
+    await releaseLock();
+  }
 }
 
 main().catch((error) => {
