@@ -1993,6 +1993,7 @@
       const META_MASK_FLASK_STORE_URL = 'https://chromewebstore.google.com/detail/metamask-flask-developmen/ljfoeinjpaedjfecbmggjgodbgkmjkjk';
       let activeWallet = '';
       let activeWalletProvider = '';
+      let activeMetaMaskFlaskProvider = null;
       let autoWalletSyncInFlight = false;
       const walletReadAuthorizationCache = new Map();
       const walletReadAuthorizationInFlight = new Map();
@@ -2053,9 +2054,10 @@
 
       function getMinaWalletProvider() {
         if (activeWalletProvider === 'metamask') {
-          if (!window.ethereum?.request) return null;
+          const flaskProvider = activeMetaMaskFlaskProvider;
+          if (!flaskProvider?.request) return null;
           const invoke = async (method, params) =>
-            await window.ethereum.request({
+            await flaskProvider.request({
               method: 'wallet_invokeSnap',
               params: {
                 snapId: META_MASK_MINA_SNAP_ID,
@@ -2076,14 +2078,26 @@
         return window.mina || null;
       }
 
-      async function isMetaMaskFlaskAvailable() {
-        if (!window.ethereum?.request) return false;
-        try {
-          const version = await window.ethereum.request({ method: 'web3_clientVersion' });
-          return String(version || '').toLowerCase().includes('flask');
-        } catch {
-          return false;
+      function getInjectedEthereumProviders() {
+        const primary = window.ethereum;
+        const providers = Array.isArray(primary?.providers) ? primary.providers : [];
+        return [...new Set([primary, ...providers])].filter((provider) => typeof provider?.request === 'function');
+      }
+
+      async function selectMetaMaskFlaskProvider() {
+        activeMetaMaskFlaskProvider = null;
+        for (const provider of getInjectedEthereumProviders()) {
+          try {
+            const version = await provider.request({ method: 'web3_clientVersion' });
+            if (String(version || '').toLowerCase().includes('flask')) {
+              activeMetaMaskFlaskProvider = provider;
+              return true;
+            }
+          } catch {
+            // Ignore unrelated injected providers and continue looking for Flask.
+          }
         }
+        return false;
       }
 
       function redirectToMetaMaskFlask() {
@@ -2091,11 +2105,11 @@
       }
 
       async function installMetaMaskMinaSnap() {
-        if (!(await isMetaMaskFlaskAvailable())) {
+        if (!(await selectMetaMaskFlaskProvider())) {
           redirectToMetaMaskFlask();
           throw new Error('MetaMask Flask is required for the Zeko Mina Wallet Snap. Install Flask, return here, then connect MetaMask again.');
         }
-        const installed = await window.ethereum.request({
+        const installed = await activeMetaMaskFlaskProvider.request({
           method: 'wallet_requestSnaps',
           params: {
             [META_MASK_MINA_SNAP_ID]: { version: '0.1.0' }
