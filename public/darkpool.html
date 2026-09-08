@@ -2061,10 +2061,12 @@
       const WALLET_SYNC_COOLDOWN_MS = 20000;
       const META_MASK_MINA_SNAP_ID = 'npm:@mondejka/mina-snap';
       const META_MASK_FLASK_STORE_URL = 'https://chromewebstore.google.com/detail/metamask-flask-developmen/ljfoeinjpaedjfecbmggjgodbgkmjkjk';
+      const META_MASK_PROVIDER_PROBE_TIMEOUT_MS = 2000;
       let activeWallet = '';
       let activeWalletProvider = '';
       let activeMetaMaskSnapProvider = null;
       const eip6963Providers = new Set();
+      const eip6963ProviderInfo = new Map();
       let metaMaskProviderDiagnostic = '';
       let walletAutoConnectPaused = false;
       let autoWalletSyncInFlight = false;
@@ -2083,7 +2085,10 @@
 
       window.addEventListener('eip6963:announceProvider', (event) => {
         const provider = event?.detail?.provider;
-        if (typeof provider?.request === 'function') eip6963Providers.add(provider);
+        if (typeof provider?.request === 'function') {
+          eip6963Providers.add(provider);
+          eip6963ProviderInfo.set(provider, event?.detail?.info || {});
+        }
       });
 
       function formatDisplayAsset(asset) {
@@ -2162,7 +2167,9 @@
         try {
           window.dispatchEvent(new Event('eip6963:requestProvider'));
         } catch {}
-        return [...new Set([primary, ...providers, ...eip6963Providers])].filter((provider) => typeof provider?.request === 'function');
+        // Explicitly announced providers are more reliable when MetaMask and Flask
+        // are installed together. Keep the ambiguous window.ethereum fallback last.
+        return [...new Set([...eip6963Providers, ...providers, primary])].filter((provider) => typeof provider?.request === 'function');
       }
 
       function findInstalledMinaSnap(snaps) {
@@ -2171,41 +2178,77 @@
         return Object.values(snaps).find((snap) => snap?.id === META_MASK_MINA_SNAP_ID) || null;
       }
 
+      function withProviderProbeTimeout(task, label) {
+        return new Promise((resolve, reject) => {
+          const timeout = setTimeout(
+            () => reject(new Error(`${label} timed out after ${META_MASK_PROVIDER_PROBE_TIMEOUT_MS}ms`)),
+            META_MASK_PROVIDER_PROBE_TIMEOUT_MS
+          );
+          Promise.resolve().then(task).then(
+            (value) => {
+              clearTimeout(timeout);
+              resolve(value);
+            },
+            (error) => {
+              clearTimeout(timeout);
+              reject(error);
+            }
+          );
+        });
+      }
+
+      async function probeMetaMaskProvider(provider) {
+        const [snapsResult, versionResult] = await Promise.allSettled([
+          withProviderProbeTimeout(() => provider.request({ method: 'wallet_getSnaps' }), 'wallet_getSnaps'),
+          withProviderProbeTimeout(() => provider.request({ method: 'web3_clientVersion' }), 'web3_clientVersion')
+        ]);
+        const snaps = snapsResult.status === 'fulfilled' ? snapsResult.value : null;
+        const version = versionResult.status === 'fulfilled' ? String(versionResult.value || '') : '';
+        return {
+          provider,
+          installedSnap: findInstalledMinaSnap(snaps),
+          version,
+          providerInfo: eip6963ProviderInfo.get(provider) || {},
+          probeErrors: [snapsResult, versionResult]
+            .filter((result) => result.status === 'rejected')
+            .map((result) => String(result.reason?.message || result.reason))
+        };
+      }
+
       async function selectMetaMaskSnapProvider() {
         activeMetaMaskSnapProvider = null;
         const providers = getInjectedEthereumProviders();
-        for (const provider of providers) {
-          try {
-            const snaps = await provider.request({ method: 'wallet_getSnaps' });
-            const installedSnap = findInstalledMinaSnap(snaps);
-            if (installedSnap) {
-              activeMetaMaskSnapProvider = provider;
-              metaMaskProviderDiagnostic = `Installed Mina Snap ${installedSnap.version || 'detected'}`;
-              return { provider, installed: true };
-            }
-          } catch {
-            // This provider does not expose the Snaps API.
-          }
+        if (!providers.length) {
+          metaMaskProviderDiagnostic = 'No EIP-1193 wallet provider was injected.';
+          return null;
         }
 
-        const discoveredVersions = [];
-        for (const provider of providers) {
-          try {
-            const version = await provider.request({ method: 'web3_clientVersion' });
-            const versionLabel = String(version || 'unknown provider');
-            discoveredVersions.push(versionLabel);
-            if (versionLabel.toLowerCase().includes('flask')) {
-              activeMetaMaskSnapProvider = provider;
-              metaMaskProviderDiagnostic = `Flask detected: ${versionLabel}`;
-              return { provider, installed: false };
-            }
-          } catch {
-            // Ignore unrelated injected providers and continue looking for Flask.
-          }
+        const results = await Promise.all(providers.map((provider) => probeMetaMaskProvider(provider)));
+        const installed = results.find((result) => result.installedSnap);
+        if (installed) {
+          activeMetaMaskSnapProvider = installed.provider;
+          metaMaskProviderDiagnostic = `Installed Mina Snap ${installed.installedSnap.version || 'detected'}`;
+          return { provider: installed.provider, installed: true };
         }
+
+        const flask = results.find((result) => {
+          const announcedLabel = `${result.providerInfo?.name || ''} ${result.providerInfo?.rdns || ''}`;
+          return `${result.version} ${announcedLabel}`.toLowerCase().includes('flask');
+        });
+        if (flask) {
+          activeMetaMaskSnapProvider = flask.provider;
+          const flaskLabel = flask.providerInfo?.name || flask.version || 'MetaMask Flask';
+          metaMaskProviderDiagnostic = `Flask detected: ${flaskLabel}`;
+          return { provider: flask.provider, installed: false };
+        }
+
+        const discoveredVersions = results.map((result) => result.version).filter(Boolean);
+        const probeErrors = results.flatMap((result) => result.probeErrors);
         metaMaskProviderDiagnostic = discoveredVersions.length
           ? `Detected: ${discoveredVersions.join(' | ')}`
-          : 'No EIP-1193 wallet provider was injected.';
+          : probeErrors.length
+            ? `Wallet provider probes failed: ${probeErrors.join(' | ')}`
+            : 'No compatible MetaMask Flask provider was detected.';
         return null;
       }
 
@@ -5408,45 +5451,73 @@
         if (menu) menu.hidden = !open;
         document.getElementById('networkWalletMenuBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
       };
-      async function connectSelectedWallet(providerKind) {
-        for (const menuId of ['walletProviderMenu', 'networkWalletMenu']) {
-          const menu = document.getElementById(menuId);
-          if (menu) menu.hidden = true;
-        }
+      async function connectSelectedWallet(providerKind, menuSource = 'global') {
+        const globalMenu = document.getElementById('walletProviderMenu');
+        const networkMenu = document.getElementById('networkWalletMenu');
+        if (globalMenu) globalMenu.hidden = true;
+        if (networkMenu && menuSource !== 'network') networkMenu.hidden = true;
         const previousWallet = activeWallet;
         const previousProvider = activeWalletProvider;
         const previousAutoConnectPaused = walletAutoConnectPaused;
         const trigger = document.getElementById('globalConnectWalletBtn');
         const networkTrigger = document.getElementById('networkWalletMenuBtn');
+        const networkProviderStatus = document.getElementById('networkWalletProviderStatus');
+        const networkAddressStatus = document.getElementById('networkWalletAddressStatus');
+        const providerButtons = [
+          document.getElementById('connectAuroWalletBtn'),
+          document.getElementById('connectMetaMaskWalletBtn'),
+          document.getElementById('switchAuroWalletBtn'),
+          document.getElementById('switchMetaMaskWalletBtn')
+        ].filter(Boolean);
+        const providerLabel = providerKind === 'metamask' ? 'MetaMask Flask' : 'Auro';
         if (trigger) {
           trigger.disabled = true;
-          trigger.textContent = providerKind === 'metamask' ? 'Connecting MetaMask...' : 'Connecting Auro...';
+          trigger.textContent = `Connecting ${providerLabel}...`;
         }
         if (networkTrigger) networkTrigger.disabled = true;
+        for (const button of providerButtons) button.disabled = true;
+        if (networkProviderStatus) networkProviderStatus.textContent = `Connecting ${providerLabel}...`;
+        if (networkAddressStatus) {
+          networkAddressStatus.textContent = providerKind === 'metamask'
+            ? 'Checking installed wallet providers and the Mina Snap...'
+            : 'Waiting for wallet approval...';
+        }
+        setText('orderOut', `Connecting ${providerLabel}...`);
         try {
           await connectWallet(providerKind);
+          if (networkMenu) networkMenu.hidden = true;
         } catch (error) {
+          const message = String(error?.message || error);
           activeWallet = previousWallet;
           activeWalletProvider = previousProvider;
           walletAutoConnectPaused = previousAutoConnectPaused;
           updateWalletButtonState();
-          setText('orderOut', String(error));
+          if (networkProviderStatus) networkProviderStatus.textContent = `${providerLabel} connection failed`;
+          if (networkAddressStatus) {
+            networkAddressStatus.textContent = providerKind === 'metamask'
+              ? `${metaMaskProviderDiagnostic || 'No compatible Flask provider was selected.'} ${message}`
+              : message;
+          }
+          if (menuSource === 'network' && networkMenu) networkMenu.hidden = false;
+          if (menuSource === 'global' && globalMenu) globalMenu.hidden = false;
+          setText('orderOut', `Error: ${message}`);
         } finally {
+          for (const button of providerButtons) button.disabled = false;
           if (trigger) {
             trigger.disabled = false;
             trigger.textContent = 'Connect Wallet';
-            trigger.setAttribute('aria-expanded', 'false');
+            trigger.setAttribute('aria-expanded', globalMenu?.hidden ? 'false' : 'true');
           }
           if (networkTrigger) {
             networkTrigger.disabled = false;
-            networkTrigger.setAttribute('aria-expanded', 'false');
+            networkTrigger.setAttribute('aria-expanded', networkMenu?.hidden ? 'false' : 'true');
           }
         }
       }
-      document.getElementById('connectAuroWalletBtn').onclick = () => connectSelectedWallet('auro');
-      document.getElementById('connectMetaMaskWalletBtn').onclick = () => connectSelectedWallet('metamask');
-      document.getElementById('switchAuroWalletBtn').onclick = () => connectSelectedWallet('auro');
-      document.getElementById('switchMetaMaskWalletBtn').onclick = () => connectSelectedWallet('metamask');
+      document.getElementById('connectAuroWalletBtn').onclick = () => connectSelectedWallet('auro', 'global');
+      document.getElementById('connectMetaMaskWalletBtn').onclick = () => connectSelectedWallet('metamask', 'global');
+      document.getElementById('switchAuroWalletBtn').onclick = () => connectSelectedWallet('auro', 'network');
+      document.getElementById('switchMetaMaskWalletBtn').onclick = () => connectSelectedWallet('metamask', 'network');
       document.getElementById('disconnectWalletBtn').onclick = () => {
         walletAutoConnectPaused = true;
         activeWallet = '';
