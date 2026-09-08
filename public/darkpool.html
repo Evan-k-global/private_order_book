@@ -1577,6 +1577,7 @@
             </div>
             <button type="button" role="menuitem" id="switchAuroWalletBtn">Connect Auro</button>
             <button type="button" role="menuitem" id="switchMetaMaskWalletBtn">Connect MetaMask (Flask)</button>
+            <button type="button" role="menuitem" id="disconnectWalletBtn">Disconnect Wallet</button>
           </div>
         </div>
       </div>
@@ -2050,6 +2051,7 @@
       let activeWalletProvider = '';
       let activeMetaMaskFlaskProvider = null;
       const eip6963Providers = new Set();
+      let walletAutoConnectPaused = false;
       let autoWalletSyncInFlight = false;
       const walletReadAuthorizationCache = new Map();
       const walletReadAuthorizationInFlight = new Map();
@@ -2227,6 +2229,7 @@
       }
 
       async function syncDetectedWallet({ force = false } = {}) {
+        if (walletAutoConnectPaused && !force) return false;
         if (autoWalletSyncInFlight) return false;
         const wallet = await readConnectedWallet();
         if (!wallet) return false;
@@ -3567,6 +3570,7 @@
 
       function updateWalletButtonState() {
         const btn = document.getElementById('globalConnectWalletBtn');
+        const disconnectButton = document.getElementById('disconnectWalletBtn');
         const networkTrigger = document.getElementById('networkWalletMenuBtn');
         const networkProviderStatus = document.getElementById('networkWalletProviderStatus');
         const networkAddressStatus = document.getElementById('networkWalletAddressStatus');
@@ -3594,6 +3598,7 @@
           }
           if (networkProviderStatus) networkProviderStatus.textContent = 'No wallet connected';
           if (networkAddressStatus) networkAddressStatus.textContent = 'Choose a wallet to connect.';
+          if (disconnectButton) disconnectButton.disabled = true;
           return;
         }
         btn.hidden = true;
@@ -3607,6 +3612,10 @@
         }
         if (networkProviderStatus) networkProviderStatus.textContent = `${activeProviderLabel} connected`;
         if (networkAddressStatus) networkAddressStatus.textContent = w || 'Address unavailable';
+        if (disconnectButton) {
+          disconnectButton.disabled = false;
+          disconnectButton.textContent = `Disconnect ${activeProviderLabel}`;
+        }
       }
 
       function dismissWelcomeOverlay() {
@@ -3630,6 +3639,7 @@
 
       async function connectWallet(providerKind) {
         if (providerKind === 'metamask') await installMetaMaskMinaSnap();
+        walletAutoConnectPaused = false;
         activeWalletProvider = providerKind;
         const provider = getMinaWalletProvider();
         if (!provider) throw new Error('Selected wallet provider was not found in browser');
@@ -5357,6 +5367,7 @@
         }
         const previousWallet = activeWallet;
         const previousProvider = activeWalletProvider;
+        const previousAutoConnectPaused = walletAutoConnectPaused;
         const trigger = document.getElementById('globalConnectWalletBtn');
         const networkTrigger = document.getElementById('networkWalletMenuBtn');
         if (trigger) {
@@ -5369,6 +5380,7 @@
         } catch (error) {
           activeWallet = previousWallet;
           activeWalletProvider = previousProvider;
+          walletAutoConnectPaused = previousAutoConnectPaused;
           updateWalletButtonState();
           setText('orderOut', String(error));
         } finally {
@@ -5387,6 +5399,23 @@
       document.getElementById('connectMetaMaskWalletBtn').onclick = () => connectSelectedWallet('metamask');
       document.getElementById('switchAuroWalletBtn').onclick = () => connectSelectedWallet('auro');
       document.getElementById('switchMetaMaskWalletBtn').onclick = () => connectSelectedWallet('metamask');
+      document.getElementById('disconnectWalletBtn').onclick = () => {
+        walletAutoConnectPaused = true;
+        activeWallet = '';
+        activeWalletProvider = '';
+        activeMetaMaskFlaskProvider = null;
+        walletConnected = false;
+        pendingTokenTransfer = null;
+        walletReadAuthorizationCache.clear();
+        walletReadAuthorizationInFlight.clear();
+        setWalletFields('');
+        const menu = document.getElementById('networkWalletMenu');
+        if (menu) menu.hidden = true;
+        document.getElementById('networkWalletMenuBtn').setAttribute('aria-expanded', 'false');
+        updateWalletButtonState();
+        updateOperatorPanelState();
+        setText('orderOut', 'Wallet disconnected from ShadowBook. Choose Auro or MetaMask Flask to connect again.');
+      };
 
       document.getElementById('inspectBtn').onclick = async () => {
         try {
