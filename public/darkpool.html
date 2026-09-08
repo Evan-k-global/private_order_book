@@ -1234,6 +1234,19 @@
       .network-wallet-status span {
         overflow-wrap: anywhere;
       }
+      .wallet-menu-link {
+        display: block;
+        padding: 8px 10px;
+        border-radius: 8px;
+        color: #70d7de;
+        font-size: 12px;
+        text-decoration: none;
+      }
+      .wallet-menu-link:hover,
+      .wallet-menu-link:focus-visible {
+        background: rgba(78, 199, 255, 0.12);
+        outline: none;
+      }
       .wallet-btn {
         width: auto;
         padding: 6px 12px;
@@ -1577,6 +1590,7 @@
             </div>
             <button type="button" role="menuitem" id="switchAuroWalletBtn">Connect Auro</button>
             <button type="button" role="menuitem" id="switchMetaMaskWalletBtn">Connect MetaMask (Flask)</button>
+            <a class="wallet-menu-link" href="https://chromewebstore.google.com/detail/metamask-flask-developmen/ljfoeinjpaedjfecbmggjgodbgkmjkjk" target="_blank" rel="noopener noreferrer">Install MetaMask Flask</a>
             <button type="button" role="menuitem" id="disconnectWalletBtn">Disconnect Wallet</button>
           </div>
         </div>
@@ -2051,6 +2065,7 @@
       let activeWalletProvider = '';
       let activeMetaMaskFlaskProvider = null;
       const eip6963Providers = new Set();
+      let metaMaskProviderDiagnostic = '';
       let walletAutoConnectPaused = false;
       let autoWalletSyncInFlight = false;
       const walletReadAuthorizationCache = new Map();
@@ -2152,28 +2167,38 @@
 
       async function selectMetaMaskFlaskProvider() {
         activeMetaMaskFlaskProvider = null;
+        const discoveredVersions = [];
         for (const provider of getInjectedEthereumProviders()) {
           try {
             const version = await provider.request({ method: 'web3_clientVersion' });
-            if (String(version || '').toLowerCase().includes('flask')) {
+            const versionLabel = String(version || 'unknown provider');
+            discoveredVersions.push(versionLabel);
+            if (versionLabel.toLowerCase().includes('flask')) {
               activeMetaMaskFlaskProvider = provider;
+              metaMaskProviderDiagnostic = `Flask detected: ${versionLabel}`;
               return true;
             }
           } catch {
             // Ignore unrelated injected providers and continue looking for Flask.
           }
         }
+        metaMaskProviderDiagnostic = discoveredVersions.length
+          ? `Detected: ${discoveredVersions.join(' | ')}`
+          : 'No EIP-1193 wallet provider was injected.';
         return false;
       }
 
-      function redirectToMetaMaskFlask() {
-        window.location.assign(META_MASK_FLASK_STORE_URL);
+      function showMetaMaskFlaskUnavailable() {
+        const providerStatus = document.getElementById('networkWalletProviderStatus');
+        const addressStatus = document.getElementById('networkWalletAddressStatus');
+        if (providerStatus) providerStatus.textContent = 'MetaMask Flask not available';
+        if (addressStatus) addressStatus.textContent = `${metaMaskProviderDiagnostic} Use a browser profile with Flask enabled and standard MetaMask disabled.`;
       }
 
       async function installMetaMaskMinaSnap() {
         if (!(await selectMetaMaskFlaskProvider())) {
-          redirectToMetaMaskFlask();
-          throw new Error('MetaMask Flask is required for the Zeko Mina Wallet Snap. Install Flask, return here, then connect MetaMask again.');
+          showMetaMaskFlaskUnavailable();
+          throw new Error('MetaMask Flask is not injected in this browser profile. ShadowBook did not send a Snap request to standard MetaMask. Use the Flask-only browser profile, then try again.');
         }
         const installed = await activeMetaMaskFlaskProvider.request({
           method: 'wallet_requestSnaps',
