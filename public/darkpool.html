@@ -1191,8 +1191,45 @@
         letter-spacing: 0.04em;
         white-space: nowrap;
       }
+      .wallet-connect-wrap,
       .network-wallet-wrap {
         position: relative;
+      }
+      .wallet-menu {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        z-index: 30;
+        width: 230px;
+        padding: 6px;
+        display: grid;
+        gap: 4px;
+        border: 1px solid #2b4a63;
+        border-radius: 12px;
+        background: rgba(6, 17, 32, 0.98);
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.38);
+      }
+      .wallet-menu[hidden] { display: none; }
+      .wallet-menu button,
+      .wallet-menu-link {
+        width: 100%;
+        padding: 8px 10px;
+        box-sizing: border-box;
+        text-align: left;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
+        color: #c7ddf1;
+        font-size: 12px;
+        text-decoration: none;
+      }
+      .wallet-menu button:hover,
+      .wallet-menu button:focus-visible,
+      .wallet-menu-link:hover,
+      .wallet-menu-link:focus-visible {
+        border-color: #315675;
+        background: rgba(78, 199, 255, 0.12);
+        outline: none;
       }
       .network-wallet-trigger {
         display: inline-flex;
@@ -1201,24 +1238,9 @@
         cursor: pointer;
         background: rgba(8, 21, 37, 0.82);
       }
-      .network-wallet-trigger:hover,
-      .network-wallet-trigger:focus-visible {
-        border-color: #41749a;
-        color: #d7fbff;
-        outline: none;
-      }
-      .network-wallet-trigger.connected {
-        border-color: #2f6e63;
-      }
-      .network-wallet-chevron {
-        font-size: 10px;
-        color: #70d7de;
-      }
-      .network-wallet-menu {
-        right: 0;
-        left: auto;
-        width: 256px;
-      }
+      .network-wallet-trigger.connected { border-color: #2f6e63; }
+      .network-wallet-chevron { color: #70d7de; font-size: 10px; }
+      .network-wallet-menu { right: 0; left: auto; width: 256px; }
       .network-wallet-status {
         display: grid;
         gap: 3px;
@@ -1227,26 +1249,8 @@
         color: #99b6ce;
         font-size: 11px;
       }
-      .network-wallet-status strong {
-        color: #d7fbff;
-        font-size: 12px;
-      }
-      .network-wallet-status span {
-        overflow-wrap: anywhere;
-      }
-      .wallet-menu-link {
-        display: block;
-        padding: 8px 10px;
-        border-radius: 8px;
-        color: #70d7de;
-        font-size: 12px;
-        text-decoration: none;
-      }
-      .wallet-menu-link:hover,
-      .wallet-menu-link:focus-visible {
-        background: rgba(78, 199, 255, 0.12);
-        outline: none;
-      }
+      .network-wallet-status strong { color: #d7fbff; font-size: 12px; }
+      .network-wallet-status span { overflow-wrap: anywhere; }
       .wallet-btn {
         width: auto;
         padding: 6px 12px;
@@ -1256,42 +1260,6 @@
         border: 1px solid #2f6e63;
         background: linear-gradient(120deg, rgba(42, 140, 255, 0.24), rgba(37, 208, 181, 0.26));
         color: #d7fbff;
-      }
-      .wallet-connect-wrap {
-        position: relative;
-      }
-      .wallet-menu {
-        position: absolute;
-        top: calc(100% + 8px);
-        left: 0;
-        z-index: 30;
-        width: 188px;
-        padding: 6px;
-        display: grid;
-        gap: 4px;
-        border: 1px solid #2b4a63;
-        border-radius: 12px;
-        background: rgba(6, 17, 32, 0.98);
-        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.38);
-      }
-      .wallet-menu[hidden] {
-        display: none;
-      }
-      .wallet-menu button {
-        width: 100%;
-        padding: 8px 10px;
-        text-align: left;
-        border: 1px solid transparent;
-        border-radius: 8px;
-        background: transparent;
-        color: #c7ddf1;
-        font-size: 12px;
-      }
-      .wallet-menu button:hover,
-      .wallet-menu button:focus-visible {
-        border-color: #315675;
-        background: rgba(78, 199, 255, 0.12);
-        outline: none;
       }
       .panel-hidden {
         display: none;
@@ -1540,7 +1508,7 @@
         <ol class="welcome-steps">
           <li class="welcome-step">
             <div class="welcome-step-num">1</div>
-            <div><strong>Connect wallet</strong><span>Link Auro or the Zeko Mina Wallet Snap in MetaMask to enable private trading.</span></div>
+            <div><strong>Connect wallet</strong><span>Link your Auro wallet to enable private trading.</span></div>
           </li>
           <li class="welcome-step">
             <div class="welcome-step-num">2</div>
@@ -1574,7 +1542,7 @@
           <button type="button" class="ghost wallet-btn" id="globalConnectWalletBtn" aria-haspopup="menu" aria-expanded="false">Connect Wallet</button>
           <div id="walletProviderMenu" class="wallet-menu" role="menu" hidden>
             <button type="button" role="menuitem" id="connectAuroWalletBtn">Connect Auro</button>
-            <button type="button" role="menuitem" id="connectMetaMaskWalletBtn">Connect MetaMask (Flask)</button>
+            <a class="wallet-menu-link" href="https://bridge.sepolia.zeko.io/" target="_blank" rel="noopener noreferrer">Bridge with MetaMask</a>
           </div>
         </div>
       </div>
@@ -1585,13 +1553,12 @@
           </button>
           <div id="networkWalletMenu" class="wallet-menu network-wallet-menu" role="menu" hidden>
             <div class="network-wallet-status">
-              <strong id="networkWalletProviderStatus">No wallet connected</strong>
-              <span id="networkWalletAddressStatus">Choose a wallet to connect.</span>
+              <strong id="networkWalletProviderStatus">No Zeko wallet connected</strong>
+              <span id="networkWalletAddressStatus">Connect Auro to trade; use MetaMask only in the bridge.</span>
             </div>
             <button type="button" role="menuitem" id="switchAuroWalletBtn">Connect Auro</button>
-            <button type="button" role="menuitem" id="switchMetaMaskWalletBtn">Connect MetaMask (Flask)</button>
-            <a class="wallet-menu-link" href="https://chromewebstore.google.com/detail/metamask-flask-developmen/ljfoeinjpaedjfecbmggjgodbgkmjkjk" target="_blank" rel="noopener noreferrer">Install MetaMask Flask</a>
-            <button type="button" role="menuitem" id="disconnectWalletBtn">Disconnect Wallet</button>
+            <a class="wallet-menu-link" href="https://bridge.sepolia.zeko.io/" target="_blank" rel="noopener noreferrer">Open Zeko Bridge (MetaMask)</a>
+            <button type="button" role="menuitem" id="disconnectWalletBtn">Disconnect Auro</button>
           </div>
         </div>
       </div>
@@ -1603,7 +1570,7 @@
           <div class="grid3">
             <div>
               <label>Wallet</label>
-              <input id="ordWallet" placeholder="Connect Wallet" />
+              <input id="ordWallet" placeholder="Connect Auro Wallet" />
             </div>
             <div>
               <label>Market</label>
@@ -1909,7 +1876,7 @@
           <div class="hd"><h2>Funding Guide</h2></div>
           <div class="bd stack">
             <div class="footnote mono">
-              1) Connect a wallet. 2) Sync balances. 3) Deposit and mint private notes. 4) Trade with notes.
+              1) Connect Auro. 2) Sync balances. 3) Deposit and mint private notes. 4) Trade with notes.
             </div>
           </div>
         </section>
@@ -1982,7 +1949,7 @@
           <div class="hd"><h2>On-Chain Funding</h2></div>
           <div class="bd stack">
             <div class="footnote">
-              Sync your active Auro or MetaMask Snap account and on-chain balances into ShadowBook.
+              Sync your active Auro account and on-chain balances into ShadowBook.
             </div>
             <div class="grid2 funding-sync-row">
               <button id="syncBtn" class="txn">Sync On-Chain Balance</button>
@@ -2003,7 +1970,7 @@
           <div class="hd"><h2>Transfer sZEKO</h2></div>
           <div class="bd stack">
             <div class="footnote">
-              Build the sZEKO transfer before your wallet signs it. ShadowBook adds the recipient token account when needed; this does not mint notes or change vault collateral.
+              Build the sZEKO transfer before Auro signs it. ShadowBook adds the recipient token account when needed; this does not mint notes or change vault collateral.
             </div>
             <div class="grid2">
               <div>
@@ -2015,10 +1982,10 @@
                 <input id="tokenTransferAmount" type="number" min="0.000000001" step="any" placeholder="0" />
               </div>
             </div>
-            <div id="tokenTransferHint" class="hint-box">Source wallet: connect Auro or MetaMask, or enter a wallet in On-Chain Funding.</div>
+            <div id="tokenTransferHint" class="hint-box">Source wallet: connect Auro or enter a wallet in On-Chain Funding.</div>
             <div class="grid2">
               <button id="buildTokenTransferBtn" class="ghost">Build Transfer</button>
-              <button id="signTokenTransferBtn" class="txn" disabled>Sign in Wallet</button>
+              <button id="signTokenTransferBtn" class="txn" disabled>Sign in Auro</button>
             </div>
             <pre id="tokenTransferOut"></pre>
           </div>
@@ -2059,15 +2026,9 @@
       let serverTokenContractAddresses = {};
       const walletSyncTimes = new Map();
       const WALLET_SYNC_COOLDOWN_MS = 20000;
-      const META_MASK_MINA_SNAP_ID = 'npm:@mondejka/mina-snap';
-      const META_MASK_FLASK_STORE_URL = 'https://chromewebstore.google.com/detail/metamask-flask-developmen/ljfoeinjpaedjfecbmggjgodbgkmjkjk';
-      let activeWallet = '';
-      let activeWalletProvider = '';
-      let activeMetaMaskFlaskProvider = null;
-      const eip6963Providers = new Set();
-      let metaMaskProviderDiagnostic = '';
-      let walletAutoConnectPaused = false;
-      let autoWalletSyncInFlight = false;
+      let activeAuroWallet = '';
+      let auroAutoConnectPaused = false;
+      let autoAuroSyncInFlight = false;
       const walletReadAuthorizationCache = new Map();
       const walletReadAuthorizationInFlight = new Map();
       const WALLET_READ_AUTH_EXPIRY_MS = 8 * 60 * 60 * 1000;
@@ -2080,11 +2041,6 @@
         auroNetworkName: 'Zeko Ethereum Sepolia',
         graphqlUrl: 'https://sepolia.zeko.io/graphql'
       };
-
-      window.addEventListener('eip6963:announceProvider', (event) => {
-        const provider = event?.detail?.provider;
-        if (typeof provider?.request === 'function') eip6963Providers.add(provider);
-      });
 
       function formatDisplayAsset(asset) {
         const value = String(asset || '').trim();
@@ -2130,89 +2086,8 @@
         setMakerPairDisplay('sETH/sZEKO');
       }
 
-      function getMinaWalletProvider() {
-        if (activeWalletProvider === 'metamask') {
-          const flaskProvider = activeMetaMaskFlaskProvider;
-          if (!flaskProvider?.request) return null;
-          const invoke = async (method, params) =>
-            await flaskProvider.request({
-              method: 'wallet_invokeSnap',
-              params: {
-                snapId: META_MASK_MINA_SNAP_ID,
-                request: params === undefined ? { method } : { method, params }
-              }
-            });
-          return {
-            requestAccounts: () => invoke('mina_requestAccounts'),
-            getAccounts: () => invoke('mina_accounts'),
-            requestNetwork: () => invoke('mina_requestNetwork'),
-            addChain: (params) => invoke('mina_addChain', params),
-            signMessage: (params) => invoke('mina_signMessage', params),
-            signFields: (params) => invoke('mina_signFields', params),
-            sendTransaction: (params) => invoke('mina_sendTransaction', params),
-            request: ({ method, params }) => invoke(method, params)
-          };
-        }
-        return window.mina || null;
-      }
-
-      function getInjectedEthereumProviders() {
-        const primary = window.ethereum;
-        const providers = Array.isArray(primary?.providers) ? primary.providers : [];
-        try {
-          window.dispatchEvent(new Event('eip6963:requestProvider'));
-        } catch {}
-        return [...new Set([primary, ...providers, ...eip6963Providers])].filter((provider) => typeof provider?.request === 'function');
-      }
-
-      async function selectMetaMaskFlaskProvider() {
-        activeMetaMaskFlaskProvider = null;
-        const discoveredVersions = [];
-        for (const provider of getInjectedEthereumProviders()) {
-          try {
-            const version = await provider.request({ method: 'web3_clientVersion' });
-            const versionLabel = String(version || 'unknown provider');
-            discoveredVersions.push(versionLabel);
-            if (versionLabel.toLowerCase().includes('flask')) {
-              activeMetaMaskFlaskProvider = provider;
-              metaMaskProviderDiagnostic = `Flask detected: ${versionLabel}`;
-              return true;
-            }
-          } catch {
-            // Ignore unrelated injected providers and continue looking for Flask.
-          }
-        }
-        metaMaskProviderDiagnostic = discoveredVersions.length
-          ? `Detected: ${discoveredVersions.join(' | ')}`
-          : 'No EIP-1193 wallet provider was injected.';
-        return false;
-      }
-
-      function showMetaMaskFlaskUnavailable() {
-        const providerStatus = document.getElementById('networkWalletProviderStatus');
-        const addressStatus = document.getElementById('networkWalletAddressStatus');
-        if (providerStatus) providerStatus.textContent = 'MetaMask Flask not available';
-        if (addressStatus) addressStatus.textContent = `${metaMaskProviderDiagnostic} Use a browser profile with Flask enabled and standard MetaMask disabled.`;
-      }
-
-      async function installMetaMaskMinaSnap() {
-        if (!(await selectMetaMaskFlaskProvider())) {
-          showMetaMaskFlaskUnavailable();
-          throw new Error('MetaMask Flask is not injected in this browser profile. ShadowBook did not send a Snap request to standard MetaMask. Use the Flask-only browser profile, then try again.');
-        }
-        const installed = await activeMetaMaskFlaskProvider.request({
-          method: 'wallet_requestSnaps',
-          params: {
-            [META_MASK_MINA_SNAP_ID]: { version: '0.1.0' }
-          }
-        });
-        if (!installed?.[META_MASK_MINA_SNAP_ID]) {
-          throw new Error('MetaMask did not install the Zeko Mina Wallet Snap');
-        }
-      }
-
-      async function walletRequest(methodName, params) {
-        const provider = getMinaWalletProvider();
+      async function auroRequest(methodName, params) {
+        const provider = window.mina;
         if (!provider) throw new Error('No Mina wallet provider found in browser');
         if (typeof provider[methodName] === 'function') {
           return params === undefined ? await provider[methodName]() : await provider[methodName](params);
@@ -2229,8 +2104,8 @@
         return String(first?.publicKey || first?.address || '').trim();
       }
 
-      async function readConnectedWallet({ request = false } = {}) {
-        const provider = getMinaWalletProvider();
+      async function readAuroWallet({ request = false } = {}) {
+        const provider = window.mina;
         if (!provider) return '';
         let accounts = [];
         if (request && typeof provider.requestAccounts === 'function') {
@@ -2253,54 +2128,53 @@
         }
       }
 
-      async function syncDetectedWallet({ force = false } = {}) {
-        if (walletAutoConnectPaused && !force) return false;
-        if (autoWalletSyncInFlight) return false;
-        const wallet = await readConnectedWallet();
+      async function syncDetectedAuroWallet({ force = false } = {}) {
+        if (auroAutoConnectPaused && !force) return false;
+        if (autoAuroSyncInFlight) return false;
+        const wallet = await readAuroWallet();
         if (!wallet) return false;
         const current = String(document.getElementById('chainWallet')?.value || '').trim();
         const currentIsEmpty = !current || isDemoWalletPlaceholder(current);
-        const canAdopt = force || walletConnected || currentIsEmpty || current === activeWallet;
+        const canAdopt = force || walletConnected || currentIsEmpty || current === activeAuroWallet;
         if (!canAdopt) return false;
-        const changed = wallet !== activeWallet || current !== wallet;
-        if (!activeWalletProvider) activeWalletProvider = 'auro';
-        activeWallet = wallet;
+        const changed = wallet !== activeAuroWallet || current !== wallet;
+        activeAuroWallet = wallet;
         walletConnected = true;
         if (current !== wallet) setWalletFields(wallet);
         updateWalletButtonState();
         if (!changed && !force) return true;
-        autoWalletSyncInFlight = true;
+        autoAuroSyncInFlight = true;
         try {
           await syncWalletContext(wallet);
           walletSyncTimes.set(wallet, Date.now());
         } finally {
-          autoWalletSyncInFlight = false;
+          autoAuroSyncInFlight = false;
         }
         return true;
       }
 
-      async function requestWalletNetworkInfo() {
+      async function requestAuroNetworkInfo() {
         try {
-          return await walletRequest('requestNetwork');
+          return await auroRequest('requestNetwork');
         } catch {
           return null;
         }
       }
 
       async function syncSepoliaWalletNetwork() {
-        const provider = getMinaWalletProvider();
+        const provider = window.mina;
         if (!provider) {
           throw new Error('No Mina wallet provider found in browser');
         }
-        const walletResult = await walletRequest('addChain', {
+        const auroResult = await auroRequest('addChain', {
           url: sepoliaWalletNetwork.graphqlUrl,
           name: sepoliaWalletNetwork.auroNetworkName
         });
-        const currentNetwork = await requestWalletNetworkInfo();
+        const currentNetwork = await requestAuroNetworkInfo();
         return {
           requestedWalletNetwork: sepoliaWalletNetwork,
-          walletResult,
-          walletNetwork: currentNetwork
+          auroResult,
+          auroNetwork: currentNetwork
         };
       }
 
@@ -2675,7 +2549,7 @@
       }
 
       async function sendDepositTxWithWallet() {
-        const provider = getMinaWalletProvider();
+        const provider = window.mina;
         if (!provider) throw new Error('No Mina wallet provider found in browser');
         if (!vaultDepositAddress) throw new Error('Vault address is not configured on server');
         const wallet = document.getElementById('noteWallet').value.trim();
@@ -2749,7 +2623,7 @@
           } catch (e) {
             attempts.push(`sendTransaction: ${String(e?.message || e)}`);
             depositDebugLog('wallet-error', { asset, tokenId, error: String(e?.message || e) });
-            const error = new Error(`Wallet signing or Sepolia submission failed for ${asset}. No automatic retry was sent. Attempts: ${attempts.join(' | ')}`);
+            const error = new Error(`Auro signing or Sepolia submission failed for ${asset}. No automatic retry was sent. Attempts: ${attempts.join(' | ')}`);
             error.depositIntentId = depositIntentId;
             error.depositContext = { wallet, asset, tokenId, amount };
             throw error;
@@ -2822,11 +2696,11 @@
         return (
           document.getElementById('chainWallet')?.value?.trim() ||
           document.getElementById('noteWallet')?.value?.trim() ||
-          activeWallet
+          activeAuroWallet
         );
       }
 
-      async function buildTokenTransfer() {
+      async function buildTokenTransferForAuro() {
         const wallet = getTokenTransferSourceWallet();
         const recipient = document.getElementById('tokenTransferRecipient').value.trim();
         const amount = Number(document.getElementById('tokenTransferAmount').value || 0);
@@ -2837,7 +2711,7 @@
         setText('tokenTransferOut', {
           ok: true,
           pending: true,
-          message: 'Building and proving the sZEKO transfer. Your wallet will not open until this finishes.'
+          message: 'Building and proving the sZEKO transfer. Auro will not open until this finishes.'
         });
         const built = await sdk.buildTokenTransferTransaction({
           wallet,
@@ -2851,7 +2725,7 @@
         setText('tokenTransferOut', {
           ok: true,
           stage: 'built',
-          message: 'Transfer is built and proved. Review it, then click Sign in Wallet.',
+          message: 'Transfer is built and proved. Review it, then click Sign in Auro.',
           wallet,
           recipient,
           asset: built.asset,
@@ -2863,8 +2737,8 @@
         });
       }
 
-      async function signBuiltTokenTransferWithWallet() {
-        const provider = getMinaWalletProvider();
+      async function signBuiltTokenTransferWithAuro() {
+        const provider = window.mina;
         if (!provider) throw new Error('No Auro wallet provider found in browser');
         if (!pendingTokenTransfer?.built?.transaction) throw new Error('Build the transfer before signing');
         const { wallet, built } = pendingTokenTransfer;
@@ -2915,7 +2789,7 @@
             attempts.push(`mina_sendTransaction: ${String(error?.message || error)}`);
           }
         }
-        throw new Error(`Wallet did not accept the prebuilt sZEKO transfer. No automatic retry was sent. Attempts: ${attempts.join(' | ') || 'none'}`);
+        throw new Error(`Auro did not accept the prebuilt sZEKO transfer. No automatic retry was sent. Attempts: ${attempts.join(' | ') || 'none'}`);
       }
 
       function sleep(ms) {
@@ -3408,7 +3282,7 @@
       }
 
       async function signMessageWithWallet(message, wallet) {
-        const provider = getMinaWalletProvider();
+        const provider = window.mina;
         if (!provider) throw new Error('No Mina wallet provider found in browser');
         const attempts = [];
         function normalizeSignatureValue(value) {
@@ -3595,21 +3469,10 @@
 
       function updateWalletButtonState() {
         const btn = document.getElementById('globalConnectWalletBtn');
-        const disconnectButton = document.getElementById('disconnectWalletBtn');
         const networkTrigger = document.getElementById('networkWalletMenuBtn');
-        const networkProviderStatus = document.getElementById('networkWalletProviderStatus');
-        const networkAddressStatus = document.getElementById('networkWalletAddressStatus');
-        const activeProviderLabel = activeWalletProvider === 'metamask' ? 'MetaMask Flask' : activeWalletProvider === 'auro' ? 'Auro' : 'Wallet';
-        const activeAddress = String(activeWallet || document.getElementById('ordWallet')?.value || '').trim();
-        const transferSignButton = document.getElementById('signTokenTransferBtn');
-        if (transferSignButton) {
-          transferSignButton.textContent =
-            activeWalletProvider === 'metamask'
-              ? 'Sign in MetaMask'
-              : activeWalletProvider === 'auro'
-                ? 'Sign in Auro'
-                : 'Sign in Wallet';
-        }
+        const providerStatus = document.getElementById('networkWalletProviderStatus');
+        const addressStatus = document.getElementById('networkWalletAddressStatus');
+        const disconnectButton = document.getElementById('disconnectWalletBtn');
         if (!btn) return;
         if (!walletConnected) {
           btn.hidden = false;
@@ -3617,29 +3480,26 @@
           btn.classList.remove('connected');
           btn.disabled = false;
           btn.title = '';
-          if (networkTrigger) {
-            networkTrigger.classList.remove('connected');
-            networkTrigger.title = 'Choose a wallet';
-          }
-          if (networkProviderStatus) networkProviderStatus.textContent = 'No wallet connected';
-          if (networkAddressStatus) networkAddressStatus.textContent = 'Choose a wallet to connect.';
+          if (networkTrigger) networkTrigger.classList.remove('connected');
+          if (providerStatus) providerStatus.textContent = 'No Zeko wallet connected';
+          if (addressStatus) addressStatus.textContent = 'Connect Auro to trade; use MetaMask only in the bridge.';
           if (disconnectButton) disconnectButton.disabled = true;
           return;
         }
         btn.hidden = true;
-        const w = activeAddress;
+        const w = String(document.getElementById('ordWallet')?.value || '').trim();
         btn.classList.add('connected');
         btn.disabled = false;
         btn.title = w || '';
         if (networkTrigger) {
           networkTrigger.classList.add('connected');
-          networkTrigger.title = `${activeProviderLabel}: ${w}`;
+          networkTrigger.title = `Auro: ${w}`;
         }
-        if (networkProviderStatus) networkProviderStatus.textContent = `${activeProviderLabel} connected`;
-        if (networkAddressStatus) networkAddressStatus.textContent = w || 'Address unavailable';
+        if (providerStatus) providerStatus.textContent = 'Auro connected';
+        if (addressStatus) addressStatus.textContent = w || 'Address unavailable';
         if (disconnectButton) {
           disconnectButton.disabled = false;
-          disconnectButton.textContent = `Disconnect ${activeProviderLabel}`;
+          disconnectButton.textContent = 'Disconnect Auro';
         }
       }
 
@@ -3662,16 +3522,14 @@
         if (!dismissed) overlay.classList.add('is-open');
       }
 
-      async function connectWallet(providerKind) {
-        if (providerKind === 'metamask') await installMetaMaskMinaSnap();
-        walletAutoConnectPaused = false;
-        activeWalletProvider = providerKind;
-        const provider = getMinaWalletProvider();
-        if (!provider) throw new Error('Selected wallet provider was not found in browser');
-        const wallet = await readConnectedWallet({ request: true });
+      async function connectWallet() {
+        const provider = window.mina;
+        if (!provider) throw new Error('No Mina wallet provider found in browser');
+        const wallet = await readAuroWallet({ request: true });
         if (!wallet || typeof wallet !== 'string') throw new Error('Wallet did not return an address');
 
-        activeWallet = wallet;
+        auroAutoConnectPaused = false;
+        activeAuroWallet = wallet;
         walletConnected = true;
         setWalletFields(wallet);
         updateWalletButtonState();
@@ -3886,14 +3744,14 @@
           String(document.getElementById('chainWallet')?.value || '').trim() ||
           String(document.getElementById('noteWallet')?.value || '').trim();
         if (!wallet) {
-          setText('notesPortfolioOut', 'Enter a wallet address or connect a wallet.');
+          setText('notesPortfolioOut', 'Enter a wallet address or connect Auro Wallet.');
           return;
         }
         if (isDemoWalletPlaceholder(wallet)) {
           setText('notesPortfolioOut', walletSetupMessage('sync'));
           return;
         }
-        activeWallet = '';
+        activeAuroWallet = '';
         walletConnected = false;
         updateWalletButtonState();
         setText('notesPortfolioOut', 'Syncing on-chain balances and rebuilding wallet + private collateral view...');
@@ -5373,7 +5231,7 @@
         updateSelectedNoteAssetMeta();
         refreshWithdrawPanel().catch(() => {});
       };
-      document.getElementById('globalConnectWalletBtn').onclick = async () => {
+      document.getElementById('globalConnectWalletBtn').onclick = () => {
         const menu = document.getElementById('walletProviderMenu');
         const open = Boolean(menu?.hidden);
         if (menu) menu.hidden = !open;
@@ -5385,50 +5243,25 @@
         if (menu) menu.hidden = !open;
         document.getElementById('networkWalletMenuBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
       };
-      async function connectSelectedWallet(providerKind) {
+      async function connectAuroFromMenu() {
         for (const menuId of ['walletProviderMenu', 'networkWalletMenu']) {
           const menu = document.getElementById(menuId);
           if (menu) menu.hidden = true;
         }
-        const previousWallet = activeWallet;
-        const previousProvider = activeWalletProvider;
-        const previousAutoConnectPaused = walletAutoConnectPaused;
-        const trigger = document.getElementById('globalConnectWalletBtn');
-        const networkTrigger = document.getElementById('networkWalletMenuBtn');
-        if (trigger) {
-          trigger.disabled = true;
-          trigger.textContent = providerKind === 'metamask' ? 'Connecting MetaMask...' : 'Connecting Auro...';
-        }
-        if (networkTrigger) networkTrigger.disabled = true;
         try {
-          await connectWallet(providerKind);
+          await connectWallet();
         } catch (error) {
-          activeWallet = previousWallet;
-          activeWalletProvider = previousProvider;
-          walletAutoConnectPaused = previousAutoConnectPaused;
-          updateWalletButtonState();
           setText('orderOut', String(error));
         } finally {
-          if (trigger) {
-            trigger.disabled = false;
-            trigger.textContent = 'Connect Wallet';
-            trigger.setAttribute('aria-expanded', 'false');
-          }
-          if (networkTrigger) {
-            networkTrigger.disabled = false;
-            networkTrigger.setAttribute('aria-expanded', 'false');
-          }
+          document.getElementById('globalConnectWalletBtn').setAttribute('aria-expanded', 'false');
+          document.getElementById('networkWalletMenuBtn').setAttribute('aria-expanded', 'false');
         }
       }
-      document.getElementById('connectAuroWalletBtn').onclick = () => connectSelectedWallet('auro');
-      document.getElementById('connectMetaMaskWalletBtn').onclick = () => connectSelectedWallet('metamask');
-      document.getElementById('switchAuroWalletBtn').onclick = () => connectSelectedWallet('auro');
-      document.getElementById('switchMetaMaskWalletBtn').onclick = () => connectSelectedWallet('metamask');
+      document.getElementById('connectAuroWalletBtn').onclick = () => connectAuroFromMenu();
+      document.getElementById('switchAuroWalletBtn').onclick = () => connectAuroFromMenu();
       document.getElementById('disconnectWalletBtn').onclick = () => {
-        walletAutoConnectPaused = true;
-        activeWallet = '';
-        activeWalletProvider = '';
-        activeMetaMaskFlaskProvider = null;
+        auroAutoConnectPaused = true;
+        activeAuroWallet = '';
         walletConnected = false;
         pendingTokenTransfer = null;
         walletReadAuthorizationCache.clear();
@@ -5439,7 +5272,7 @@
         document.getElementById('networkWalletMenuBtn').setAttribute('aria-expanded', 'false');
         updateWalletButtonState();
         updateOperatorPanelState();
-        setText('orderOut', 'Wallet disconnected from ShadowBook. Choose Auro or MetaMask Flask to connect again.');
+        setText('orderOut', 'Auro disconnected from ShadowBook. Connect Auro again to trade on Zeko.');
       };
 
       document.getElementById('inspectBtn').onclick = async () => {
@@ -5482,7 +5315,7 @@
         try {
           button.disabled = true;
           button.textContent = 'Building...';
-          await buildTokenTransfer();
+          await buildTokenTransferForAuro();
         } catch (e) {
           setText('tokenTransferOut', String(e));
         } finally {
@@ -5494,13 +5327,12 @@
         const button = document.getElementById('signTokenTransferBtn');
         try {
           button.disabled = true;
-          const walletName = activeWalletProvider === 'metamask' ? 'MetaMask' : 'Auro';
           setText('tokenTransferOut', {
             ok: true,
             pending: true,
-            message: `Opening the prebuilt sZEKO transfer in ${walletName} for signature.`
+            message: 'Opening the prebuilt sZEKO transfer in Auro for signature.'
           });
-          const result = await signBuiltTokenTransferWithWallet();
+          const result = await signBuiltTokenTransferWithAuro();
           setText('tokenTransferOut', {
             ok: true,
             submitted: true,
@@ -5962,7 +5794,7 @@
           );
           const marketsResp = await sdk.getMarkets();
           populateMarketSelectors(marketsResp.markets || []);
-          await syncDetectedWallet({ force: true }).catch(() => {});
+          await syncDetectedAuroWallet({ force: true }).catch(() => {});
           void resumePendingDeposit();
           updateWalletButtonState();
           updateOrderTypeUi();
@@ -5975,7 +5807,7 @@
           await refreshOperatorPanel();
           await refreshPretradeChecklist();
           setInterval(() => {
-            syncDetectedWallet().catch(() => {});
+            syncDetectedAuroWallet().catch(() => {});
           }, 5000);
           setText('notesPortfolioOut', 'Refreshing wallet + private collateral...');
           await refreshNotesPortfolio();
