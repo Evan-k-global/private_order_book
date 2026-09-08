@@ -2655,6 +2655,9 @@
         if (!pendingTokenTransfer?.built?.transaction) throw new Error('Build the transfer before signing');
         const { wallet, built } = pendingTokenTransfer;
         const txPayload = toAuroTransactionData(built.transaction);
+        // Auro signs all wallet-owned token account updates only when this
+        // prebuilt zkApp command is passed as JSON text, rather than an object.
+        const auroTransaction = JSON.stringify(txPayload);
         const walletFee = Number(built.fee || '0.0002');
         if (!Number.isFinite(walletFee) || walletFee <= 0) throw new Error(`invalid wallet fee ${built.fee}`);
         const attempts = [];
@@ -2675,7 +2678,7 @@
           try {
             const response = await provider.sendTransaction({
               onlySign: true,
-              transaction: txPayload,
+              transaction: auroTransaction,
               feePayer: { fee: walletFee }
             });
             return signAndSubmit(response, 'sendTransaction');
@@ -2689,7 +2692,7 @@
               method: 'mina_sendTransaction',
               params: {
                 onlySign: true,
-                transaction: txPayload,
+                transaction: auroTransaction,
                 feePayer: { fee: walletFee }
               }
             });
