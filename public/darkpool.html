@@ -2233,6 +2233,13 @@
         return fixed;
       }
 
+      function fmtChartAxisPrice(value) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return '-';
+        // Reserve precision for prices with up to seven integer digits.
+        return n.toFixed(7);
+      }
+
       function fmtUtcTime(value) {
         const ms = Number(value);
         if (!Number.isFinite(ms) || ms <= 0) return '-';
@@ -4310,7 +4317,10 @@
         const height = Math.max(320, Math.floor(host.clientHeight || 320));
         const visibleCount = computeVisibleCandleCount(rows.length);
         const visibleRows = rows.slice(-visibleCount);
-        const pad = { top: 14, right: 64, bottom: 42, left: 64 };
+        // Seven integer digits, a decimal point, and seven fractional digits
+        // need about 90px in the chart's 10px monospace axis labels.
+        const axisPad = Math.min(96, Math.max(72, Math.floor((width - 120) / 2)));
+        const pad = { top: 14, right: axisPad, bottom: 42, left: axisPad };
         const volumeHeight = 72;
         const priceBottom = height - volumeHeight - 22;
         const priceHeight = Math.max(120, priceBottom - pad.top);
@@ -4344,8 +4354,8 @@
           const price = maxPrice - (scaledSpan / 4) * i;
           grid.push(`<line x1="${pad.left}" y1="${y.toFixed(2)}" x2="${(width - pad.right).toFixed(2)}" y2="${y.toFixed(2)}" stroke="#17324a" stroke-width="1" />`);
           labels.push(
-            `<text x="${(pad.left - 8).toFixed(2)}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="#8ba5bf" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">${fmtDisplayNumber(price)}</text>` +
-            `<text x="${(width - pad.right + 8).toFixed(2)}" y="${(y + 4).toFixed(2)}" fill="#8ba5bf" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">${fmtDisplayNumber(price)}</text>`
+            `<text x="${(pad.left - 8).toFixed(2)}" y="${(y + 4).toFixed(2)}" text-anchor="end" fill="#8ba5bf" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">${fmtChartAxisPrice(price)}</text>` +
+            `<text x="${(width - pad.right + 8).toFixed(2)}" y="${(y + 4).toFixed(2)}" fill="#8ba5bf" font-size="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">${fmtChartAxisPrice(price)}</text>`
           );
         }
         grid.push(`<line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${(priceBottom + 1).toFixed(2)}" stroke="#214056" stroke-width="1" />`);
@@ -5164,11 +5174,13 @@
         const button = document.getElementById('buildTokenTransferBtn');
         try {
           button.disabled = true;
+          button.textContent = 'Building...';
           await buildTokenTransferForAuro();
         } catch (e) {
           setText('tokenTransferOut', String(e));
         } finally {
           button.disabled = false;
+          button.textContent = 'Build Transfer';
         }
       };
       document.getElementById('signTokenTransferBtn').onclick = async () => {
