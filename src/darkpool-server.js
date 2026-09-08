@@ -1631,6 +1631,50 @@ async function recoverDepositIntent(intentId) {
   throw new Error('deposit recovery by balance delta is disabled; submit the original sequencer transaction hash to /vault/deposit or /vault/deposit-auto');
 }
 
+
+// Sepolia's live GraphQL service currently accepts transactions but does not
+// expose a transaction-by-hash query. A deposit intent captures both balances
+// before wallet submission, so it provides a bounded fallback only when that
+// indexer capability is absent. It never replaces a usable canonical tx lookup.
+async function verifyDepositIntentBalanceDelta({ intentId, txHash, wallet, resolved, amount }) {
+  const intent = depositIntents.get(String(intentId || '').trim());
+  if (!intent || intent.status !== 'pending') {
+    throw new Error('deposit intent not found or is no longer pending');
+  }
+  const canonical = canonicalAssetKey(resolved.asset);
+  if (
+    intent.wallet !== wallet ||
+    intent.asset !== canonical ||
+    intent.tokenId !== resolved.tokenId ||
+    String(intent.rawAmount || '') !== decimalToRawUnitsString(amount, ASSET_DECIMALS[canonical] ?? 9)
+  ) {
+    throw new Error('deposit intent does not match the submitted deposit');
+  }
+  const after = await readDepositIntentBalances(intent);
+  const expectedRaw = BigInt(intent.rawAmount);
+  const walletDebit = BigInt(intent.beforeWalletRaw) - BigInt(after.walletRaw);
+  const vaultCredit = BigInt(after.vaultRaw) - BigInt(intent.beforeVaultRaw);
+  if (walletDebit < expectedRaw || vaultCredit < expectedRaw) {
+    throw new Error(
+      `deposit balance delta not confirmed: wallet debit ${walletDebit.toString()}, vault credit ${vaultCredit.toString()}, expected ${expectedRaw.toString()}`
+    );
+  }
+  return {
+    ok: true,
+    txHash: String(txHash).trim(),
+    tx: {
+      hash: String(txHash).trim(),
+      from: wallet,
+      to: VAULT_DEPOSIT_ADDRESS,
+      amount: intent.rawAmount,
+      token: resolved.tokenId
+    },
+    txUnixMs: null,
+    unverified: false,
+    verificationMode: 'intent-balance-delta'
+  };
+}
+
 function cancelDepositIntent(intentId) {
   const intent = depositIntents.get(intentId);
   if (!intent) return { ok: true, canceled: false, intentId };
@@ -1682,13 +1726,33 @@ async function mintVerifiedDeposit({ accountId, wallet, resolved, amount, txHash
   usedDepositTxHashes.add(claimKey);
   await persistEngineState();
   try {
-    const verifiedDeposit = await verifyOnchainDepositTx({
-      txHash: claimKey,
-      wallet,
-      asset: canonical,
-      tokenId: resolved.tokenId,
-      amount
-    });
+    let verifiedDeposit;
+    try {
+      verifiedDeposit = await verifyOnchainDepositTx({
+        txHash: claimKey,
+        wallet,
+        asset: canonical,
+        tokenId: resolved.tokenId,
+        amount
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      if (!intentId || !isMissingGraphqlFieldError(detail)) throw error;
+      verifiedDeposit = await verifyDepositIntentBalanceDelta({
+        intentId,
+        txHash: claimKey,
+        wallet,
+        resolved,
+        amount
+      });
+      recordAuditEvent('deposit_verified_by_intent_balance_delta', {
+        txHash: claimKey,
+        wallet,
+        asset: canonical,
+        amount,
+        intentId
+      });
+    }
     const note = issueNote(canonical, amount, 'onchain-backed-deposit', null, accountId);
     claim.status = 'claimed';
     claim.claimedAtUnixMs = now();
