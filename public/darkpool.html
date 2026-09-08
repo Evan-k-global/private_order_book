@@ -2049,6 +2049,7 @@
       let activeWallet = '';
       let activeWalletProvider = '';
       let activeMetaMaskFlaskProvider = null;
+      const eip6963Providers = new Set();
       let autoWalletSyncInFlight = false;
       const walletReadAuthorizationCache = new Map();
       const walletReadAuthorizationInFlight = new Map();
@@ -2062,6 +2063,11 @@
         auroNetworkName: 'Zeko Ethereum Sepolia',
         graphqlUrl: 'https://sepolia.zeko.io/graphql'
       };
+
+      window.addEventListener('eip6963:announceProvider', (event) => {
+        const provider = event?.detail?.provider;
+        if (typeof provider?.request === 'function') eip6963Providers.add(provider);
+      });
 
       function formatDisplayAsset(asset) {
         const value = String(asset || '').trim();
@@ -2136,7 +2142,10 @@
       function getInjectedEthereumProviders() {
         const primary = window.ethereum;
         const providers = Array.isArray(primary?.providers) ? primary.providers : [];
-        return [...new Set([primary, ...providers])].filter((provider) => typeof provider?.request === 'function');
+        try {
+          window.dispatchEvent(new Event('eip6963:requestProvider'));
+        } catch {}
+        return [...new Set([primary, ...providers, ...eip6963Providers])].filter((provider) => typeof provider?.request === 'function');
       }
 
       async function selectMetaMaskFlaskProvider() {
