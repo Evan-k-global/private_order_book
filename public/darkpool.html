@@ -6041,13 +6041,15 @@
           );
           const marketsResp = await sdk.getMarkets();
           populateMarketSelectors(marketsResp.markets || []);
-          await syncDetectedWallet({ force: true }).catch(() => {});
-          void resumePendingDeposit();
-          updateWalletButtonState();
-          updateOrderTypeUi();
-          updateFundingModeHint();
+          // Public market data must never wait on an injected wallet. Some wallets
+          // defer passive account reads until their extension is unlocked.
           await refreshTrades();
           await refreshBook();
+          updateWalletButtonState();
+          void syncDetectedWallet({ force: true }).catch(() => {});
+          void resumePendingDeposit();
+          updateOrderTypeUi();
+          updateFundingModeHint();
           await refreshActivity();
           await refreshNotesPortfolio();
           await refreshFeeStats();

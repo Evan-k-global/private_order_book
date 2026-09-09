@@ -200,6 +200,16 @@ test('failed wallet switch restores the previous provider and suppresses duplica
   assert.match(nodes.get('networkWalletAddressStatus').textContent, /extension conflict/);
 });
 
+test('public chart and book refresh before passive wallet discovery', () => {
+  const startup = between('const marketsResp = await sdk.getMarkets();', "setInterval(() => {");
+  const publicTrades = startup.indexOf('await refreshTrades();');
+  const publicBook = startup.indexOf('await refreshBook();');
+  const walletDiscovery = startup.indexOf('void syncDetectedWallet({ force: true })');
+  assert.ok(publicTrades >= 0 && publicTrades < walletDiscovery);
+  assert.ok(publicBook >= 0 && publicBook < walletDiscovery);
+  assert.equal(startup.includes('await syncDetectedWallet({ force: true })'), false);
+});
+
 test('all inline browser scripts parse', () => {
   for (const match of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) {
     if (match[1].trim()) new vm.Script(match[1]);
