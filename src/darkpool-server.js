@@ -107,6 +107,12 @@ const SECURE_MODE_IMPLEMENTED = false;
 // The current proof circuit proves Merkle transitions, not asset conservation or
 // note ownership. Keep real-funds settlement fail-closed until that circuit exists.
 const PRIVATE_STATE_CONSERVATION_PROOF_IMPLEMENTED = false;
+// V1 compatibility mode restores the original signature-authorized root anchoring
+// path. It is explicit because it does not prove note ownership or conservation.
+const ALLOW_V1_LEAN_REAL_FUNDS_SETTLEMENT =
+  String(process.env.ALLOW_V1_LEAN_REAL_FUNDS_SETTLEMENT || 'false').toLowerCase() === 'true';
+const REAL_FUNDS_SETTLEMENT_ENABLED =
+  !REAL_FUNDS_MODE || PRIVATE_STATE_CONSERVATION_PROOF_IMPLEMENTED || ALLOW_V1_LEAN_REAL_FUNDS_SETTLEMENT;
 const ONCHAIN_SYNC_TTL_MS = Number.parseInt(process.env.ONCHAIN_SYNC_TTL_MS || '60000', 10);
 function normalizeAssetMapKey(value) {
   return String(value || '').trim().toUpperCase();
@@ -4464,8 +4470,10 @@ function writeJson(res, status, data) {
 async function markBatchCommittedInternal(batchId, txHash = null, payoutTxs = []) {
   const target = settlementBatches.find((b) => Number(b.batchId) === Number(batchId));
   if (!target) throw new Error('batch not found');
-  if (REAL_FUNDS_MODE && target.batchType === 'trade_settlement' && !PRIVATE_STATE_CONSERVATION_PROOF_IMPLEMENTED) {
-    throw new Error('real-funds settlement is disabled until the private-state conservation proof is implemented');
+  if (REAL_FUNDS_MODE && target.batchType === 'trade_settlement' && !REAL_FUNDS_SETTLEMENT_ENABLED) {
+    throw new Error(
+      'real-funds settlement requires a private-state conservation proof or explicit V1 lean settlement compatibility mode'
+    );
   }
 
   if (
@@ -4764,9 +4772,17 @@ function computeStatusSnapshot(port) {
     settlement: {
       pendingSettlementCount,
       committedSettlementCount,
-      realFundsSettlementEnabled: !REAL_FUNDS_MODE || PRIVATE_STATE_CONSERVATION_PROOF_IMPLEMENTED,
+      realFundsSettlementEnabled: REAL_FUNDS_SETTLEMENT_ENABLED,
+      settlementSecurityMode: PRIVATE_STATE_CONSERVATION_PROOF_IMPLEMENTED
+        ? 'private-state-conservation-proof'
+        : ALLOW_V1_LEAN_REAL_FUNDS_SETTLEMENT
+          ? 'v1-lean-root-anchor'
+          : REAL_FUNDS_MODE
+            ? 'blocked'
+            : 'test',
+      v1LeanRealFundsOverrideEnabled: ALLOW_V1_LEAN_REAL_FUNDS_SETTLEMENT,
       blockedReason:
-        REAL_FUNDS_MODE && !PRIVATE_STATE_CONSERVATION_PROOF_IMPLEMENTED
+        REAL_FUNDS_MODE && !REAL_FUNDS_SETTLEMENT_ENABLED
           ? 'real-funds settlement requires a private-state conservation proof'
           : null,
       pendingPayoutBatches: settlementBatches.filter(
@@ -4861,6 +4877,11 @@ async function main() {
     const missing = required.filter(([, value]) => !value).map(([name]) => name);
     if (missing.length) throw new Error(`missing required real-funds secrets: ${missing.join(', ')}`);
     if (ENABLE_LOCAL_SETTLEMENT) throw new Error('ENABLE_LOCAL_SETTLEMENT cannot be enabled in real-funds mode');
+    if (ALLOW_V1_LEAN_REAL_FUNDS_SETTLEMENT) {
+      console.warn(
+        '[darkpool-server] V1 lean real-funds settlement enabled: batches are operator-signed root anchors without note conservation proofs'
+      );
+    }
   }
   if (CONFIGURED_ZEKO_GRAPHQL && CONFIGURED_ZEKO_GRAPHQL !== SEPOLIA_ZEKO_GRAPHQL) {
     console.warn('[darkpool-server] Ignoring non-Sepolia ZEKO_GRAPHQL and using https://sepolia.zeko.io/graphql');

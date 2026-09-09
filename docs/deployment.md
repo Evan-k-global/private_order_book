@@ -89,6 +89,12 @@ That contract:
 - commits the public/private roots needed by the market
 - avoids pulling the heavy private-state proof program into normal startup and batch commit
 
+The V1 Render profile explicitly sets `ALLOW_V1_LEAN_REAL_FUNDS_SETTLEMENT=true`.
+This restores operator-signed batch anchoring for the existing V1 zkApp and is
+reported by `/api/darkpool/status` as `settlementSecurityMode:
+"v1-lean-root-anchor"`. It does not prove note ownership or asset conservation;
+the default remains fail-closed when this compatibility flag is absent.
+
 The proof-heavy reference path lives in `zkapp/advanced-contract.ts`.
 
 That version is useful for partner implementations or future research, but it is intentionally not the default hosted contract because it carries substantially higher compile and memory overhead.
